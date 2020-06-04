@@ -1,0 +1,15 @@
+{
+    "bngc_ip" : "192.168.100.1",
+    "redis_server_ip" : "192.168.100.2",
+    "redis_server_port" : 6379,
+    "bngu_endpoints" : [
+        {
+            "nas_id" : "nas1",
+            "bngu_ip" : "192.168.100.2"
+        },
+        {
+            "nas_id" : "nas2",
+            "bngu_ip" : "192.168.100.3"
+        }
+    ]
+}
