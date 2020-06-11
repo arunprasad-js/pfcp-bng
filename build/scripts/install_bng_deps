@@ -37,7 +37,7 @@ cd fmt
 cmake CMakeLists.txt
 make -j2
 sudo make install
-cd..
+cd ..
 
 # Install redis client dependencies: hiredis and redis-plus-plus
 git clone https://github.com/redis/hiredis.git

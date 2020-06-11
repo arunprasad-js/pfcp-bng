@@ -4,6 +4,10 @@ The following instructions were tested on Ubuntu 18.04. Internally, the BNG cont
 
 ![bng-pfcp-architecture](vbng-pfcp-v3.png)
 
+## Known limitations
+
+* AtomicHashMaps used to manage timers/message procedures in the PFCP stack implementation can get full and stop the control plane application. We experienced this when having the control application run with 16 PFCP user plane associations for a long period of time.
+
 ## Install dependencies
 
 ### Clone this git repository
