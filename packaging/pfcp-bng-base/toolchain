@@ -1,0 +1,33 @@
+#!/bin/bash
+set -ex
+
+PACKAGE_LIST="\
+      autoconf \
+      automake \
+      bison \
+      build-essential \
+      cmake \
+      daemon \
+      doxygen \
+      flex \
+      gdb \
+      git \
+      make \
+      g++ \
+      pkg-config"
+
+install_toolchain() {
+    apt-get install -y $PACKAGE_LIST
+}
+
+remove_toolchain() {
+    apt-get remove -y $PACKAGE_LIST
+}
+
+if [ -z "$1" ] || [ "$1" = "install" ]; then
+    install_toolchain
+elif [ "$1" = "remove" ]; then
+    remove_toolchain
+else
+    echo "Unrecognized option $1"
+fi

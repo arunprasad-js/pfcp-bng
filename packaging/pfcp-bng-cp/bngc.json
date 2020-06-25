@@ -1,0 +1,15 @@
+{
+    "bngc_ip" : "10.0.2.15",
+    "redis_server_ip" : "podwhale2.lab.bisdn.de",
+    "redis_server_port" : 6379,
+    "bngu_endpoints" : [
+        {
+            "nas_id" : "nas1",
+            "bngu_ip" : "192.168.100.2"
+        },
+        {
+            "nas_id" : "nas2",
+            "bngu_ip" : "192.168.100.3"
+        }
+    ]
+}

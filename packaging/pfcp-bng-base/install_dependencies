@@ -1,0 +1,72 @@
+#!/bin/bash
+set -ex
+
+# Common libraries
+PACKAGE_LIST="\
+      libconfig++-dev \
+      libasio-dev \
+      libboost-all-dev \
+      guile-2.0-dev \
+      libcurl4-gnutls-dev \
+      libevent-dev \
+      libgcrypt11-dev \
+      libgmp-dev \
+      libhogweed? \
+      libidn2-0-dev \
+      libidn11-dev \
+      libpthread-stubs0-dev \
+      libssl-dev \
+      libtool \
+      libxml2 \
+      libxml2-dev \
+      openssl \
+      python \
+      rapidjson-dev \
+      iproute2"
+apt-get install --no-install-recommends -y $PACKAGE_LIST
+
+cd /tmp
+
+# Install FMT
+git clone https://github.com/fmtlib/fmt.git
+cd fmt
+cmake CMakeLists.txt
+make -j `nproc` install
+cd /tmp
+rm -rf /tmp/fmt
+
+# Hiredis
+git clone https://github.com/redis/hiredis.git
+cd hiredis
+make -j `nproc` install
+cd /tmp
+rm -rf /tmp/hiredis
+
+# Redis plus plus
+git clone https://github.com/sewenew/redis-plus-plus.git
+cd redis-plus-plus
+mkdir compile
+cd compile
+cmake -DCMAKE_BUILD_TYPE=Release -DREDIS_PLUS_PLUS_BUILD_TEST=OFF -DREDIS_PLUS_PLUS_CXX_STANDARD=17 ..
+make -j `nproc` install
+cd /tmp
+rm -rf /tmp/redis-plus-plus
+
+# Folly
+apt-get install -y --no-install-recommends libdouble-conversion-dev \
+      libgoogle-glog-dev \
+      libgflags-dev \
+      libiberty-dev \
+      liblz4-dev \
+      liblzma-dev \
+      libsnappy-dev \
+      zlib1g-dev \
+      binutils-dev \
+      libjemalloc-dev
+git clone https://github.com/facebook/folly.git
+cd folly
+mkdir _build && cd _build
+cmake ..
+make -j $(nproc) install
+cd /tmp
+rm -rf /tmp/folly

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Checks if BNGC_IP, BNGC_NETMASK_BITS, and BNGC_HOST_INTERFACE are unset
+if [[ -z $BNGC_IP || -z $BNGC_NETMASK_BITS || -z $BNGC_HOST_INTERFACE ]]; then
+    echo "Not adding new IP address to container"
+else
+    # Adds BNGC_IP as a secondary address in the provided host interface
+    ip a a $BNGC_IP/$BNGC_NETMASK_BITS dev $BNGC_HOST_INTERFACE
+fi
+
+# Starts the PFCP BNG CP application
+bngc /opt/bng-pfcp/build/bngc/build/bngc.json

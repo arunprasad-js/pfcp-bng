@@ -1,0 +1,63 @@
+#!/bin/bash
+set -ex
+
+BNG_PFCP_FOLDER="/opt/bng-pfcp"
+CP_FOLDER="$BNG_PFCP_FOLDER/build/bngc/build"
+UP_FOLDER="$BNG_PFCP_FOLDER/build/bngu/build"
+
+export OPENAIRCN_DIR=$BNG_PFCP_FOLDER/
+
+install_spdlog_from_git() {
+    GIT_URL=https://github.com/gabime/spdlog.git
+
+    mkdir -p $BNG_PFCP_FOLDER/build/ext
+    cd $BNG_PFCP_FOLDER/build/ext
+    git clone $GIT_URL
+    cd spdlog
+    git checkout master
+}
+
+install_bng_pfcp_cp() {
+    cmake_args="-DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_BUILD_TYPE=$PFCP_BNG_BUILD_TYPE -DBUILD_SHARED_LIBS=OFF"
+
+    mkdir -p $CP_FOLDER
+    cd $CP_FOLDER
+    cmake $cmake_args ..
+
+    make -j `nproc`
+
+    ln -s $CP_FOLDER/bngc /usr/bin/bngc
+
+    cp $BNG_PFCP_FOLDER/etc/bngc.json $CP_FOLDER
+}
+
+install_bng_pfcp_up() {
+    cmake_args="-DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_BUILD_TYPE=$PFCP_BNG_BUILD_TYPE -DBUILD_SHARED_LIBS=OFF"
+
+    mkdir -p $UP_FOLDER
+    cd $UP_FOLDER
+    cmake $cmake_args ..
+
+    make -j `nproc`
+
+    ln -s $UP_FOLDER/bngu /usr/bin/bngu
+
+    cp $BNG_PFCP_FOLDER/etc/bngu.json $UP_FOLDER
+}
+
+
+mkdir -p $BNG_PFCP_FOLDER
+
+# Clone BNG PFCP repository
+git clone https://github.com/dpdk-vbng-cp/pfcp-bng.git $BNG_PFCP_FOLDER
+
+# Install spdlog
+install_spdlog_from_git
+
+# Install CP application
+install_bng_pfcp_cp
+
+# Install UP application
+install_bng_pfcp_up
+
+

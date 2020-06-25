@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Checks if BNGU_IP, BNGU_NETMASK_BITS, and BNGU_HOST_INTERFACE are unset
+if [[ -z $BNGU_IP || -z $BNGU_NETMASK_BITS || -z $BNGU_HOST_INTERFACE ]]; then
+    echo "Not adding new IP address to container"
+else
+    # Adds BNGU_IP as a secondary address in the provided host interface
+    ip a a $BNGU_IP/$BNGU_NETMASK_BITS dev $BNGU_HOST_INTERFACE
+fi
+
+# Starts the PFCP BNG CP application
+bngu /opt/bng-pfcp/build/bngu/build/bngu.json
