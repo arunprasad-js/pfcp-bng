@@ -8,23 +8,57 @@ The following instructions were tested on Ubuntu 18.04. Internally, the BNG cont
 
 * AtomicHashMaps used to manage timers/message procedures in the PFCP stack implementation can get full and stop the control plane application. We experienced this when having the control application run with 16 PFCP user plane associations for a long period of time.
 
-## Install dependencies
+## Building docker container images
 
-### Clone this git repository
+### 1. Base image
+
+Build the base docker image from the top repository directory:
+
+```
+docker build -f packaging/pfcp-bng-base/Dockerfile . -t bisdn/pfcp-bng-base
+```
+
+### 2. Control and user plane images
+
+#### Control plane image
+
+Enter the control plane packaging directory and build an image:
+
+```
+cd packaging/pfcp-bng-cp
+docker build . -t bisdn/pfcp-bng-cp
+
+```
+
+#### User plane image
+
+Enter the user plane packaging directory and build an image:
+
+```
+cd packaging/pfcp-bng-up
+docker build . -t bisdn/pfcp-bng-up
+
+```
+
+## Manually compiling and installing BNG application
+
+### Install dependencies
+
+#### Clone this git repository
 
 ```
 git clone https://github.com/dpdk-vbng-cp/pfcp-bng.git
 cd pfcp-bng
 ```
 
-### Install bngu/bngc dependencies (mandatory)
+#### Install bngu/bngc dependencies (mandatory)
 
 ```
 cd build/scripts
 ./install_bng_deps
 ```
 
-### Install redis server (optional for testing PFCP applications locally)
+#### Install redis server (optional for testing PFCP applications locally)
 
 To locally test the application we need a redis server running in the host machine. The following instructions install the redis server from [redis.io](https://redis.io/):
 
@@ -36,7 +70,7 @@ cd redis-stable
 make
 ```
 
-### Install redis client (optional for testing PFCP applications locally)
+#### Install redis client (optional for testing PFCP applications locally)
 
 We use a local redis client that simulates messages that would be sent from accel-pppd in a real setup. This can be cloned from the following repository:
 
@@ -46,9 +80,9 @@ cd pfcp_redis_clients
 ./compile.sh
 ```
 
-## Build and compile BNGU/BNGC
+### Build and compile BNGU/BNGC
 
-### Build and compile both BNGU and BNGC
+#### Build and compile both BNGU and BNGC
 
 To execute both BNGU and BNGC applications in the same host, the `bng_builder` script can be used to build and compile both applications. Otherwise, the following subsections provide instructions on how to individually compile the BNGC/BNGU.
 
@@ -59,7 +93,7 @@ cd ~/bng-pfcp/build/scripts
 ./bng_builder [Debug]
 ```
 
-### Build and compile BNGC
+#### Build and compile BNGC
 
 The `compile_bngc` command is used to build and compile only the BNGC application. Similarly as above, the "Debug" argument can be specified as input.
 
@@ -68,7 +102,7 @@ cd ~/bng-pfcp/build/scripts
 ./compile_bngc [Debug]
 ```
 
-### Build and compile BNGU
+#### Build and compile BNGU
 
 The `compile_bngu` command is used to build and compile only the BNGU application. Similarly as above, the "Debug" argument can be specified as input.
 
@@ -77,7 +111,7 @@ cd ~/bng-pfcp/build/scripts
 ./compile_bngu [Debug]
 ```
 
-## Set up network namespaces for testing
+### Set up network namespaces for testing
 
 To test both BNGU and BNGC applications, we need two hosts. This can be locally tested by having the BNGC running in a network namespace connected to the host machine by a veth pair. In addition, we locally use a redis server and a redis client to send messages to the BNGC. In this example, the following topology is considered:
 
@@ -110,19 +144,19 @@ To configure the ns0 namespace and respective IP addressing, run the following s
 ./setup_bngc_ns.sh
 ```
 
-## Configuring and running BNGU and BNGC applications
+### Configuring and running BNGU and BNGC applications
 
-### Configuration
+#### Configuration
 
 Both BNGU and BNGC application read a JSON file when starting up. The default file are *bngu.json* and *bngc.json*, respectively. An alternative configuration file can be provided as a CLI argument.
 
-### Running the applications
+#### Running the applications
 
 The BNGU application will send an Association Setup request message to the BNGC when it starts, so we initially need to first start the BNGC.
 
 Yet, since the BNGC will connect to a redis server on startup and in this example, the redis server runs in the same host machine, we first need to instantiate a redis server.
 
-#### Start the redis server (terminal 1)
+##### Start the redis server (terminal 1)
 
 After starting the redis server, we also need to disable its protected mode option, so it does not only accept connections from localhost.
 
@@ -138,7 +172,7 @@ cd ~/redis-stable/src
 CONFIG SET protected-mode no
 ```
 
-#### Run BNGC (terminal 2)
+##### Run BNGC (terminal 2)
 
 To run the BNGC, we will open one bash shell on the respective namespace, so it is easier to run commands directly.
 
@@ -154,7 +188,7 @@ sudo ./bngc bngc.json
 ```
 
 
-#### Run BNGU (terminal 3)
+##### Run BNGU (terminal 3)
 
 ```
 # Enter bngu build folder
@@ -165,7 +199,7 @@ sudo ./bngu bngu.json
 
 ```
 
-#### Publish messages in the redis bus (terminal 4)
+##### Publish messages in the redis bus (terminal 4)
 
 ```
 cd ~/pfcp_redis_clients

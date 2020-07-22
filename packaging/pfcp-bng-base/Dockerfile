@@ -3,19 +3,21 @@ FROM ubuntu:18.04
 
 LABEL maintainer "ricardo.santos@bisdn.de"
 
-COPY . /tmp/
+RUN mkdir -p /tmp/bng-pfcp
+
+COPY . /tmp/bng-pfcp/
 
 # PFCP_BNG_BUILD_TYPE is used to set the verbose level for BNG PFCP UP/CP applications
 # Can be set to "Debug" or "Release"
 ENV PFCP_BNG_BUILD_TYPE="Release"
 
 RUN apt-get update && \
-    /tmp/toolchain install && \
+    /tmp/bng-pfcp/packaging/pfcp-bng-base/toolchain install && \
     # Install dependencies required for both PFCP applications
-    /tmp/install_dependencies && \
+    /tmp/bng-pfcp/packaging/pfcp-bng-base/install_dependencies && \
     # Build, compile, and install BNG PFCP applications
-    /tmp/install_bng_pfcp && \
-    /tmp/toolchain remove && \
+    /tmp/bng-pfcp/packaging/pfcp-bng-base/install_bng_pfcp && \
+    /tmp/bng-pfcp/packaging/pfcp-bng-base/toolchain remove && \
     # Mark libboost-system-dev and libboost-thread-dev to not being deleted by autoremove
     apt-mark manual libboost-system-dev && \
     apt-mark manual libboost-thread-dev && \

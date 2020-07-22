@@ -1,6 +1,7 @@
 #!/bin/bash
 set -ex
 
+TMP_BNG_FOLDER="/tmp/bng-pfcp"
 BNG_PFCP_FOLDER="/opt/bng-pfcp"
 CP_FOLDER="$BNG_PFCP_FOLDER/build/bngc/build"
 UP_FOLDER="$BNG_PFCP_FOLDER/build/bngu/build"
@@ -45,11 +46,8 @@ install_bng_pfcp_up() {
     cp $BNG_PFCP_FOLDER/etc/bngu.json $UP_FOLDER
 }
 
-
-mkdir -p $BNG_PFCP_FOLDER
-
-# Clone BNG PFCP repository
-git clone https://github.com/dpdk-vbng-cp/pfcp-bng.git $BNG_PFCP_FOLDER
+# Copy BNG PFCP files to BNG_PFCP_FOLDER
+cp -r $TMP_BNG_FOLDER $BNG_PFCP_FOLDER
 
 # Install spdlog
 install_spdlog_from_git
