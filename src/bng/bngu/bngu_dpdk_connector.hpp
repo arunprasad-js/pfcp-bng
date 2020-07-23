@@ -55,8 +55,9 @@ public:
     ~DPDKTelnetCLI();
 
     void connect_telnet_client();
-    void install_default_upstream_route(std::string gateway_ip_address,
-        std::string gateway_mac_address, std::string downstream_mac_address);
+    void install_default_upstream_route(std::string upstream_route_ip_address,
+        std::string bng_access_mac_address,
+        std::string upstream_route_mac_address);
 
     void send_message(itti_dpdk_send_msg_request &itti_message);
 

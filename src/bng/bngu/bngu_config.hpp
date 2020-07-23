@@ -25,9 +25,11 @@
 #define UPSTREAM_DPDK_PORT_OPTION "upstream_dpdk_port"
 #define DOWNSTREAM_DPDK_HOST_OPTION "downstream_dpdk_host"
 #define DOWNSTREAM_DPDK_PORT_OPTION "downstream_dpdk_port"
-#define GATEWAY_IP_ADDRESS_OPTION "gateway_ip_address"
-#define GATEWAY_MAC_ADDRESS_OPTION "gateway_mac_address"
-#define DOWNSTREAM_MAC_ADDRESS_OPTION "downstream_mac_address"
+#define UPSTREAM_ROUTE_IP_ADDRESS_OPTION "upstream_route_ip_address"
+#define UPSTREAM_ROUTE_MAC_ADDRESS_OPTION "upstream_route_mac_address"
+#define BNG_ACCESS_MAC_ADDRESS_OPTION "bng_access_mac_address"
+#define BNG_CORE_MAC_ADDRESS_OPTION "bng_core_mac_address"
+#define DOWNSTREAM_ROUTE_MAC_ADDRESS_OPTION "downstream_route_mac_address"
 
 #define DEFAULT_BNGU_CONFIG_FILE "bngu.json"
 

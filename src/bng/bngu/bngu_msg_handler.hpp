@@ -27,16 +27,20 @@ bool process_session_establishment_request(
         pfcp::pfcp_session_establishment_response &response,
         const char *bngu_ip);
 
-std::string get_upstream_dpdk_default_route(std::string gateway_ip_address,
-        std::string gateway_mac_address, std::string downstream_mac_address);
+std::string get_upstream_dpdk_default_route(
+        std::string upstream_route_ip_address,
+        std::string bng_access_mac_address,
+        std::string upstream_route_mac_address);
 
 void get_upstream_dpdk_commands_from_pfcp(
         pfcp::pfcp_session_establishment_request &request,
-        std::vector<std::string> *commands, std::string gateway_mac_address);
+        std::vector<std::string> *commands,
+        std::string bng_access_mac_address);
 
 void get_downstream_dpdk_commands_from_pfcp(
         pfcp::pfcp_session_establishment_request &request,
-        std::vector<std::string> *commands);
+        std::vector<std::string> *commands, std::string bng_core_mac_address,
+        std::string downstream_route_mac_address);
 
 void get_upstream_dpdk_delete_commands(uint16_t s_tag, uint16_t c_tag,
         std::vector<std::string> *commands);

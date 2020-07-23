@@ -211,15 +211,16 @@ void DPDKTelnetCLI::connect_telnet_client()
     // telnet_client = nullptr; // Deleting telnet connectivity for testing PFCP messages
 }
 
-void DPDKTelnetCLI::install_default_upstream_route(std::string gateway_ip_address,
-        std::string gateway_mac_address, std::string downstream_mac_address)
+void DPDKTelnetCLI::install_default_upstream_route(std::string upstream_route_ip_address,
+        std::string bng_access_mac_address, std::string upstream_route_mac_address)
 {
 
     Logger::bngu_dpdk().debug("[UL] Setting up default uplink route to %s %s/%s",
-            gateway_ip_address.c_str(), gateway_mac_address.c_str(), downstream_mac_address.c_str());
+            upstream_route_ip_address.c_str(), bng_access_mac_address.c_str(),
+            upstream_route_mac_address.c_str());
 
-    std::string command = get_upstream_dpdk_default_route(gateway_ip_address,
-            gateway_mac_address, downstream_mac_address);
+    std::string command = get_upstream_dpdk_default_route(upstream_route_ip_address,
+            bng_access_mac_address, upstream_route_mac_address);
 
     send_telnet_command(command);
 }

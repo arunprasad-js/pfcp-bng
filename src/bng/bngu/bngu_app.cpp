@@ -107,9 +107,9 @@ bngu_app::bngu_app() : bngu_sessions()
     std::string dpdk_down_ip = bngu_config[DOWNSTREAM_DPDK_HOST_OPTION].GetString();
     int dpdk_down_port = bngu_config[DOWNSTREAM_DPDK_PORT_OPTION].GetInt();
 
-    std::string gateway_ip_address = bngu_config[GATEWAY_IP_ADDRESS_OPTION].GetString();
-    std::string gateway_mac_address = bngu_config[GATEWAY_MAC_ADDRESS_OPTION].GetString();
-    std::string downstream_mac_address = bngu_config[DOWNSTREAM_MAC_ADDRESS_OPTION].GetString();
+    std::string upstream_route_ip_address = bngu_config[UPSTREAM_ROUTE_IP_ADDRESS_OPTION].GetString();
+    std::string bng_access_mac_address = bngu_config[BNG_ACCESS_MAC_ADDRESS_OPTION].GetString();
+    std::string upstream_route_mac_address = bngu_config[UPSTREAM_ROUTE_MAC_ADDRESS_OPTION].GetString();
 
     Logger::bngu_app().debug("Instantiating interfaces");
     bngu_pfcp_sched_params.sched_priority = BNGU_PFCP_SCHED_PRIORITY;
@@ -127,8 +127,8 @@ bngu_app::bngu_app() : bngu_sessions()
     bngu_dpdk_upstream_inst->connect_telnet_client();
     bngu_dpdk_downstream_inst->connect_telnet_client();
 
-    bngu_dpdk_upstream_inst->install_default_upstream_route(gateway_ip_address,
-            gateway_mac_address, downstream_mac_address);
+    bngu_dpdk_upstream_inst->install_default_upstream_route(upstream_route_ip_address,
+            bng_access_mac_address, upstream_route_mac_address);
 
     Logger::bngu_app().startup("Nailed startup");
 }
@@ -198,11 +198,13 @@ void bngu_app::handle_itti_sereq(
     std::vector<std::string> *uplink_commands = new std::vector<std::string>();
     std::vector<std::string> *downlink_commands = new std::vector<std::string>();
 
-    std::string gateway_address = bngu_config[GATEWAY_MAC_ADDRESS_OPTION].GetString();
+    std::string bng_access_mac_address = bngu_config[BNG_ACCESS_MAC_ADDRESS_OPTION].GetString();
+    std::string bng_core_mac_address = bngu_config[BNG_CORE_MAC_ADDRESS_OPTION].GetString();
+    std::string downstream_route_mac_address = bngu_config[DOWNSTREAM_ROUTE_MAC_ADDRESS_OPTION].GetString();
 
     // Process upstream dpdk commands
     get_upstream_dpdk_commands_from_pfcp(msg->pfcp_ies, uplink_commands,
-            gateway_address);
+            bng_access_mac_address);
 
     for(int i=0; i < uplink_commands->size(); i++) {
         Logger::bngu_app().debug("Creating request for uplink command: %s",
@@ -211,7 +213,8 @@ void bngu_app::handle_itti_sereq(
     }
 
     // Process downstream dpdk commands
-    get_downstream_dpdk_commands_from_pfcp(msg->pfcp_ies, downlink_commands);
+    get_downstream_dpdk_commands_from_pfcp(msg->pfcp_ies, downlink_commands,
+            bng_core_mac_address, downstream_route_mac_address);
 
     for(int i=0; i < downlink_commands->size(); i++) {
         Logger::bngu_app().debug("Creating request for downlink command: %s",

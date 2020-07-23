@@ -5,7 +5,9 @@
     "upstream_dpdk_port" : 8110,
     "downstream_dpdk_host" : "podwhale4.lab.bisdn.de",
     "downstream_dpdk_port" : 8102,
-    "gateway_mac_address" : "aa:bb:cc:dd:ee:1a",
-    "gateway_ip_address" : "211.1.0.1",
-    "downstream_mac_address" : "00:00:00:01:00:01"
+    "bng_access_mac_address" : "aa:bb:cc:dd:ee:1a",
+    "bng_core_mac_address" : "aa:bb:cc:dd:ee:1a",
+    "upstream_route_ip_address" : "211.1.0.1",
+    "upstream_route_mac_address" : "00:00:00:01:00:01",
+    "downstream_route_mac_address" : "00:00:00:01:00:01"
 }

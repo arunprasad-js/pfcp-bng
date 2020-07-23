@@ -290,19 +290,19 @@ bool bngu::process_session_establishment_request(
     return false;
 }
 
-std::string bngu::get_upstream_dpdk_default_route(std::string gateway_ip_address,
-        std::string gateway_mac_address, std::string downstream_mac_address)
+std::string bngu::get_upstream_dpdk_default_route(std::string upstream_route_ip_address,
+        std::string bng_access_mac_address, std::string upstream_route_mac_address)
 {
     char tmp_buffer[MAX_DPDK_CLI_MSG_SIZE]; // Used to populate messages
 
     sprintf (tmp_buffer, "pipeline upstream|routing table 0 rule add match lpm ipv4 %s 32 action fwd port 0 encap ether %s %s",
-            gateway_ip_address.c_str(), gateway_mac_address.c_str(), downstream_mac_address.c_str());
+            upstream_route_ip_address.c_str(), bng_access_mac_address.c_str(), upstream_route_mac_address.c_str());
     return std::string(tmp_buffer);
 }
 
 void bngu::get_upstream_dpdk_commands_from_pfcp(
         pfcp::pfcp_session_establishment_request &request,
-        std::vector<std::string> *commands, std::string gateway_mac_address)
+        std::vector<std::string> *commands, std::string bng_access_mac_address)
 {
     char tmp_buffer[MAX_DPDK_CLI_MSG_SIZE]; // Used to populate messages
     char ue_ip_addr_str[INET_ADDRSTRLEN];
@@ -387,13 +387,13 @@ void bngu::get_upstream_dpdk_commands_from_pfcp(
     // commands->push_back(std::string(tmp_buffer));
 
     // sprintf (tmp_buffer, "pipeline upstream|routing table 0 rule add match acl priority 0 ipv4 %s 32 0.0.0.0 0 0 65535 0 65535 17 action fwd port 0 encap ether %s %02X:%02X:%02X:%02X:%02X:%02X",
-    //         ue_ip_addr_str, gateway_mac_address.c_str(), called_station_id[0],
+    //         ue_ip_addr_str, bng_access_mac_address.c_str(), called_station_id[0],
     //         called_station_id[1], called_station_id[2], called_station_id[3],
     //         called_station_id[4], called_station_id[5]);
     // commands->push_back(std::string(tmp_buffer));
 
     // sprintf (tmp_buffer, "pipeline upstream|routing table 0 rule add match acl priority 0 ipv4 %s 32 0.0.0.0 0 0 65535 0 65535 6 action fwd port 0 encap ether %s %02X:%02X:%02X:%02X:%02X:%02X",
-    //         ue_ip_addr_str, gateway_mac_address.c_str(), called_station_id[0],
+    //         ue_ip_addr_str, bng_access_mac_address.c_str(), called_station_id[0],
     //         called_station_id[1], called_station_id[2], called_station_id[3],
     //         called_station_id[4], called_station_id[5]);
     // commands->push_back(std::string(tmp_buffer));
@@ -402,7 +402,8 @@ void bngu::get_upstream_dpdk_commands_from_pfcp(
 
 void bngu::get_downstream_dpdk_commands_from_pfcp(
         pfcp::pfcp_session_establishment_request &request,
-        std::vector<std::string> *commands)
+        std::vector<std::string> *commands, std::string bng_core_mac_address,
+        std::string downstream_route_mac_address)
 {
     char tmp_buffer[MAX_DPDK_CLI_MSG_SIZE]; // Used to populate messages
     char ue_ip_addr_str[INET_ADDRSTRLEN];
