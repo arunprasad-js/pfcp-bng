@@ -19,6 +19,8 @@
 #include "itti.hpp"
 #include "redis_client.hpp"
 #include "thread_sched.hpp"
+#include "bngc_enbue_app.hpp"
+#include "bngc_enbue_config.hpp"
 
 #include <boost/asio.hpp>
 #include <iostream>
@@ -31,12 +33,15 @@
 
 using namespace bngc;
 using namespace rapidjson;
+using namespace bngc_enbue;
 
 itti_mw *itti_inst = nullptr; //  InTer Task Interface Master Worker (?)
 bngc_app *bngc_app_inst = nullptr; // BNG control plane app instance
 redis_client *redis_client_inst = nullptr; // Redis client instance
 boost::asio::io_service io_service; // Thread mgmt
+bngc_enbue_app *bngc_enbue_app_inst = nullptr; // BNG EnbUE app instance
 Document bngc_config;
+Document bngc_enbue_config;
 
 // Signal handler
 void my_app_signal_handler(int s){
@@ -65,6 +70,12 @@ void my_app_signal_handler(int s){
     }
     redis_client_inst = nullptr;
     DEBUG_LOG("Redis client memory done.");
+
+    if (bngc_enbue_app_inst) {
+        delete bngc_enbue_app_inst;
+    }
+    bngc_enbue_app_inst = NULL;
+    DEBUG_LOG("BNGC ENBUE app memory done.");
 
     DEBUG_LOG("Freeing Allocated memory done");
     exit(0);
@@ -109,6 +120,20 @@ int main(int argc, char **argv) {
 
     // REDIS client
     redis_client_inst = new redis_client(redis_server_ip, redis_server_port);
+
+    DEBUG_LOG("Reading configurations from enbue file");
+    if(argc > 2) {
+        bngc_enbue_config = read_bngc_enbue_config_from_file(argv[2]);
+    } else {
+        bngc_enbue_config = read_bngc_enbue_config_from_file();
+    }
+
+    // BNGC - ENBUE Application
+    bngc_enbue_app_inst = new bngc_enbue_app ();
+
+    std::string ip_addr = bngc_enbue_config[BNGC_ENBUE_IPADDR_OPTION].GetString();
+    int port = bngc_enbue_config[BNGC_ENBUE_PORT_OPTION].GetInt();
+    bngc_enbue_app_inst->OpenConnection (ip_addr.c_str(), port);
 
   	pause();
     return 0;

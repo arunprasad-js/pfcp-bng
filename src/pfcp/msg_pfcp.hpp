@@ -2930,6 +2930,7 @@ public:
 
   std::pair<bool, pfcp::node_id_t>    node_id;
   std::pair<bool, pfcp::fseid_t>      cp_fseid;
+  std::pair<bool, pfcp::fteid_t>      cp_fteid;
   std::vector<pfcp::create_pdr>       create_pdrs;
   std::vector<pfcp::create_far>       create_fars;
   std::vector<pfcp::create_urr>       create_urrs;
@@ -3010,6 +3011,7 @@ public:
 
   void set(const pfcp::node_id_t& v) {node_id.first = true; node_id.second = v;}
   void set(const pfcp::fseid_t& v) {cp_fseid.first = true; cp_fseid.second = v;}
+  void set(const pfcp::fteid_t& v) {cp_fteid.first = true; cp_fteid.second = v;}
   void set(const pfcp::create_pdr& v) {create_pdrs.push_back(v);}
   void set(const pfcp::create_far& v) {create_fars.push_back(v);}
   void set(const pfcp::create_urr& v) {create_urrs.push_back(v);}

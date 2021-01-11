@@ -61,6 +61,8 @@ typedef enum {
   TASK_DPDK_UPSTREAM, // BNG UP DPDK upstream connector
   TASK_DPDK_DOWNSTREAM, // BNG UP DPDK downstream connector
   TASK_REDIS_CLIENT, // Redis client module
+  TASK_BNGC_ENBUE_APP, // BNG CP Enbue App
+  TASK_BNGC_ENBUE_RX_APP, // BNG CP Enbue App
   TASK_MAX,
   TASK_NONE,
   TASK_ALL = 255
@@ -148,6 +150,9 @@ typedef enum {
   TIME_OUT,
   HEALTH_PING,
   TERMINATE,
+  ENBUE_REGISTER_REQUEST,
+  ENBUE_DEREGISTER_REQUEST,
+  NEW_REDIS_PUB_MSG,
   ITTI_MSG_TYPE_MAX
 } itti_msg_type_t;
 

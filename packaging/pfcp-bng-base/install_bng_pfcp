@@ -30,6 +30,8 @@ install_bng_pfcp_cp() {
     ln -s $CP_FOLDER/bngc /usr/bin/bngc
 
     cp $BNG_PFCP_FOLDER/etc/bngc.json $CP_FOLDER
+
+    cp $BNG_PFCP_FOLDER/etc/bngc_enbue.json $CP_FOLDER
 }
 
 install_bng_pfcp_up() {

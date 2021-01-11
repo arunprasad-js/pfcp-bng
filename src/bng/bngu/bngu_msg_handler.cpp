@@ -29,6 +29,11 @@ bool bngu::process_session_establishment_request(
 {
     unsigned char bngu_in_addr_chr[sizeof (struct in_addr)+1]; // For bngu IP in binary format
     char ue_ip_addr_str[INET_ADDRSTRLEN];
+    pfcp::mac_address_t subscriber_mac_address;
+    int pppoe_session_id;
+    pfcp::s_tag_t s_tag = {};
+    pfcp::c_tag_t c_tag = {};
+    pfcp::fteid_t local_fteid; 
 
     bool read_ue_ip_addr = false;
     bool read_epf_mac_address = false;
@@ -128,6 +133,7 @@ bool bngu::process_session_establishment_request(
         if (pdi.ethernet_packet_filter.first
                 && pdi.ethernet_packet_filter.second.mac_address.first) {
             pfcp::mac_address_t epf_mac_address = pdi.ethernet_packet_filter.second.mac_address.second;
+            subscriber_mac_address = pdi.ethernet_packet_filter.second.mac_address.second;
             if (epf_mac_address.dest) {
                 Logger::bngu_app().debug("EPF dest MAC address:  %02X:%02X:%02X:%02X:%02X:%02X",
                         epf_mac_address.destination_mac_address[0],
@@ -137,6 +143,18 @@ bool bngu::process_session_establishment_request(
                         epf_mac_address.destination_mac_address[4],
                         epf_mac_address.destination_mac_address[5]);
                 read_epf_mac_address = true;
+            }
+        }
+
+        if (pdi.qfi.first) {
+            if (pdi.qfi.second.qfi) {
+                Logger::bngu_app().debug("GTPu Extension Header QFI Value: %d", pdi.qfi.second.qfi);
+            }
+            else {
+                Logger::bngu_app().error("Invalid QFI in request");
+                cause_ie.cause_value = pfcp::CAUSE_VALUE_REQUEST_REJECTED;
+                response.set(cause_ie);
+                return false;
             }
         }
 
@@ -218,6 +236,21 @@ bool bngu::process_session_establishment_request(
             return false;
         }
 
+        if (cte.local_fteid.first && cte.local_fteid.second.teid) {
+            local_fteid = cte.local_fteid.second;
+            inet_ntop(AF_INET, &local_fteid.ipv4_address,
+		      ue_ip_addr_str, sizeof(ue_ip_addr_str));
+            Logger::bngu_app().debug("UE IP Address: %s,  F-TEID Tunnel Id: 0x%X",
+                    ue_ip_addr_str, local_fteid.teid);
+        } else {
+            Logger::bngu_app().error("Missing create traffic endpoint Tunnel ID");
+            cause_ie.cause_value = pfcp::CAUSE_VALUE_MANDATORY_IE_MISSING;
+            offending_ie.offending_ie = PFCP_IE_F_TEID;
+            response.set(cause_ie);
+            response.set(offending_ie);
+            return false;
+        }
+
         if (cte.mac_address.first && cte.mac_address.second.dest) {
             pfcp::mac_address_t cte_mac_address = cte.mac_address.second;
             Logger::bngu_app().debug("CTE destination MAC address: %02X:%02X:%02X:%02X:%02X:%02X",
@@ -237,6 +270,7 @@ bool bngu::process_session_establishment_request(
         }
 
         if (cte.pppoe_session_id.first) {
+	    pppoe_session_id = cte.pppoe_session_id.second.pppoe_session_id;
             Logger::bngu_app().debug("CTE PPPoE SESSION ID: %d", cte.pppoe_session_id.second.pppoe_session_id);
         } else {
             Logger::bngu_app().error("Missing create traffic endpoint PPPoE Session ID");
@@ -248,6 +282,7 @@ bool bngu::process_session_establishment_request(
 
         if (cte.s_tag.first && cte.s_tag.second.vid) {
             Logger::bngu_app().debug("CTE S-TAG: %d", cte.s_tag.second.svid_value);
+            s_tag.svid_value = cte.s_tag.second.svid_value;
         } else {
             Logger::bngu_app().error("Missing create traffic endpoint S-TAG VID");
             offending_ie.offending_ie = PFCP_IE_S_TAG;
@@ -258,6 +293,7 @@ bool bngu::process_session_establishment_request(
 
         if (cte.c_tag.first && cte.c_tag.second.vid) {
             Logger::bngu_app().debug("CTE C-TAG: %d", cte.c_tag.second.cvid_value);
+            c_tag.cvid_value = cte.c_tag.second.cvid_value;
         } else {
             Logger::bngu_app().error("Missing create traffic endpoint C-TAG VID");
             offending_ie.offending_ie = PFCP_IE_C_TAG;
@@ -275,6 +311,20 @@ bool bngu::process_session_establishment_request(
     }
 
     response.set(cause_ie);
+
+    Logger::bngu_app().info ("Printing AGF-UP Information Elements ");
+
+    Logger::bngu_app().info ("Subscriber MAC Address: %02X:%02X:%02X:%02X:%02X:%02X",
+			    subscriber_mac_address.destination_mac_address[0],
+			    subscriber_mac_address.destination_mac_address[1],
+			    subscriber_mac_address.destination_mac_address[2],
+			    subscriber_mac_address.destination_mac_address[3],
+			    subscriber_mac_address.destination_mac_address[4],
+			    subscriber_mac_address.destination_mac_address[5]);
+    Logger::bngu_app().info ("Subscriber IP Address: %s", ue_ip_addr_str);
+    Logger::bngu_app().info ("Subscriber PPPOE Session Id: %d ", pppoe_session_id); 
+    Logger::bngu_app().info ("Subscriber S-TAG: %d C-TAG: %d ", s_tag.svid_value, c_tag.cvid_value);
+    Logger::bngu_app().info ("Subscriber GTPu Tunnel Id: 0x%X",local_fteid.teid);
 
     // If everything was ok with request
     if(cause_ie == pfcp::CAUSE_VALUE_REQUEST_ACCEPTED) {

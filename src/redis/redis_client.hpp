@@ -35,4 +35,6 @@ public:
 
     void process_redis_msg(itti_new_redis_msg &redis_msg);
 
+    void publish_redis_msg(itti_new_redis_pub_msg &redis_msg);
+
 };

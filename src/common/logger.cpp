@@ -93,6 +93,7 @@ void Logger::_init( const char *app )
    m_bngu_pfcp  = new _Logger("bngu_pfcp", m_sinks, ss.str().c_str() );
    m_bngu_dpdk  = new _Logger("bngu_dpdk", m_sinks, ss.str().c_str() );
    m_redis_client  = new _Logger("redis    ", m_sinks, ss.str().c_str() );
+   m_bngc_enbue_app  = new _Logger( "bngc_enbue_app ", m_sinks, ss.str().c_str() );
 }
 
 ////////////////////////////////////////////////////////////////////////////////

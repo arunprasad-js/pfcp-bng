@@ -15,9 +15,11 @@ WORKDIR /opt/bng-pfcp/build/bngc/build/
 # bngc.json needs to have the correct IP configuration for the BNG CP/UP instances
 # and redis server before deploying the container
 COPY bngc.json .
+COPY bngc_enbue.json .
 
 # Copy entrypoint file to workdir
 COPY bngc_entrypoint .
+
 
 # Exposes UDP port 8805 for PFCP connections
 EXPOSE 8805/udp

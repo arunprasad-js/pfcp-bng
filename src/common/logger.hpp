@@ -113,6 +113,7 @@ public:
    static _Logger &bngu_dpdk() { return *singleton().m_bngu_dpdk; }
    static _Logger &redis_client() { return *singleton().m_redis_client; }
 
+   static _Logger &bngc_enbue_app() { return *singleton().m_bngc_enbue_app; }
 
 private:
    static Logger *m_singleton;
@@ -162,6 +163,8 @@ private:
    _Logger *m_bngu_pfcp;
    _Logger *m_bngu_dpdk;
    _Logger *m_redis_client;
+
+   _Logger *m_bngc_enbue_app;
 };
 
 #endif // __LOGGER_H

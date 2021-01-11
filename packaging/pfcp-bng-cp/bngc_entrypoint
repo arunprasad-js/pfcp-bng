@@ -8,5 +8,12 @@ else
     ip a a $BNGC_IP/$BNGC_NETMASK_BITS dev $BNGC_HOST_INTERFACE
 fi
 
+# Starts the enbUE application
+mkdir -p /opt/lte_sim/logs/
+cp /tmp/bng-pfcp/5G_enbUE/execute/bin/ranbExe /opt/bng-pfcp/5G_enbUE/execute/bin/ranbExe
+cd /opt/bng-pfcp/5G_enbUE/execute/bin/
+./ranbExe &
+cd -
+
 # Starts the PFCP BNG CP application
-bngc /opt/bng-pfcp/build/bngc/build/bngc.json
+bngc /opt/bng-pfcp/build/bngc/build/bngc.json /opt/bng-pfcp/build/bngc/build/bngc_enbue.json

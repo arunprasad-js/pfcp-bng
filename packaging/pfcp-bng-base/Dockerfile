@@ -9,9 +9,13 @@ COPY . /tmp/bng-pfcp/
 
 # PFCP_BNG_BUILD_TYPE is used to set the verbose level for BNG PFCP UP/CP applications
 # Can be set to "Debug" or "Release"
-ENV PFCP_BNG_BUILD_TYPE="Release"
+ENV PFCP_BNG_BUILD_TYPE="Debug"
 
 RUN apt-get update && \
+    apt-get install -y build-essential && \
+    apt-get install -y gcc && \
+    apt-get install -y lksctp-tools && \
+    apt install -y libsctp-dev && \
     /tmp/bng-pfcp/packaging/pfcp-bng-base/toolchain install && \
     # Install dependencies required for both PFCP applications
     /tmp/bng-pfcp/packaging/pfcp-bng-base/install_dependencies && \

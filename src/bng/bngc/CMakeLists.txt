@@ -247,6 +247,9 @@ add_executable(bngc
   ${SRC_TOP_DIR}/bng/bngc/bngc_pfcp.cpp
   ${SRC_TOP_DIR}/bng/bngc/bngc_pfcp_association.cpp
   ${SRC_TOP_DIR}/bng/bngc/bngc_msg_handler.cpp
+  ${SRC_TOP_DIR}/bng/bngc/bngc_enbue_app.cpp
+  ${SRC_TOP_DIR}/bng/bngc/bngc_enbue_config.cpp
+  ${SRC_TOP_DIR}/bng/bngc/bngc_enbue_msg_handler.cpp
   ${SRC_TOP_DIR}/itti/itti.cpp
   ${SRC_TOP_DIR}/itti/itti_msg.cpp
   )
