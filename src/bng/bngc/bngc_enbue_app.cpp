@@ -25,6 +25,9 @@
 #include "bngc_enbue_app.hpp"
 #include "bngc_enbue_config.hpp"
 #include "bngc_enbue_msg_handler.hpp"
+#include <linux/if.h>
+#include <linux/if_tun.h>
+#include <sys/ioctl.h>
 
 #define BNGC_ENBUE_SCHED_PRIORITY 84
 #define BNGC_PFCP_SCHED_PRIORITY 84
@@ -41,10 +44,11 @@ util::thread_sched_params bngc_enbue_sched_params; // BNGC ENBUE App thread para
 util::thread_sched_params bngc_enbue_rx_sched_params; // BNGC ENBUE App thread parameters
 int32_t pollSet;
 std::mutex mtx;
-
 void bngc_enbue_app_task(void*); // Message loop task
 void bngc_enbue_rx_app(void *);
-extern void construct_message (std::string ip_addr, int session_id, std::string ifname);
+extern void construct_message (std::string ip_addr, int session_id, std::string ifname,
+		std::string iftype, std::string session);
+extern void construct_redis_packet (uint8_t *message, int len);
 
 int32_t bngc_enbue_timedwait (struct  epoll_event *pFdCtxts)
 {
@@ -123,6 +127,39 @@ std::string convert_to_string(char* a)
 } 
 
 int
+bngc_enbue_process_gtp_msg (uint32_t sock_fd)
+{
+    uint8_t       buffer[4096];
+    int           length = 1500;      
+    int           temp_len = 0;      
+    t_payload     payload;
+    uint8_t      *message = NULL;
+    int           bytesRead = 0;
+
+    memset (buffer,0x00,4096);
+
+    bytesRead = recv(sock_fd, (void *)(buffer), length, 0);
+    if(bytesRead > 0) 
+    {
+	Logger::bngc_enbue_app().debug ("Message received on Socket: %d, bytes %d",
+		sock_fd, bytesRead);
+
+	printf ("\n");
+	for (int i =0; i<bytesRead; i++)
+		printf ("%02x", buffer[i]);
+	printf ("\n");
+
+	bngc_enbue_app_inst->decode_gtp_packet (buffer);
+    }
+    else if (bytesRead == 0)
+    {
+	bngc_enbue_deregister_fd (sock_fd);
+    }
+
+    return RETURNok;
+}
+
+int
 bngc_enbue_process_response_msg (uint32_t sock_fd)
 {
     uint32_t                length;
@@ -137,6 +174,10 @@ bngc_enbue_process_response_msg (uint32_t sock_fd)
     sim_ext_header_t        hdr;
     tEnbSimFlowGenResp     *pFlowResMsg = NULL;
     char                    str[INET_ADDRSTRLEN];
+    std::string             ip_addr; 
+    std::string             imsi;
+    int                     qfi;
+    int                     tunnelid;
 
     bytesRead = recv (sock_fd, &hdr, sizeof(sim_ext_header_t), MSG_PEEK);
     if (bytesRead > 0) 
@@ -163,21 +204,31 @@ bngc_enbue_process_response_msg (uint32_t sock_fd)
 
 		    if(pFlowResMsg->procId == enbSimPdnConnReq)
 		    {
-			for (indx =0 ; indx < 15; indx ++)
+		        qfi = pFlowResMsg->qfi;
+			tunnelid = htonl (pFlowResMsg->tunnelId[indx]);
+		        imsi = convert_to_string (respImsi);
+			std::string iftype = bngc_enbue_app_inst->get_ctrl_type_from_nai (respImsi);
+
+			if (strcmp (iftype.c_str(), "pppoe") == 0)
 			{
-			    ipAddress.sin_addr.s_addr=htonl(pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr);
-			    if (0 != pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr)
+			    for (indx =0 ; indx < 15; indx ++)
 			    {
 				ipAddress.sin_addr.s_addr=htonl(pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr);
-                                std::string imsi = convert_to_string (respImsi);
-				inet_ntop(AF_INET, &(ipAddress.sin_addr), str, INET_ADDRSTRLEN);
-                                std::string ip_addr = convert_to_string (str);
-				Logger::bngc_enbue_app().debug ("IP Address : %s NAI_String : %s Tunnel ID: 0x%X ",ip_addr.c_str(), imsi.c_str(), pFlowResMsg->tunnelId[indx]);
+				if (0 != pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr)
+				{
+				    ipAddress.sin_addr.s_addr=htonl(pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr);
+				    inet_ntop(AF_INET, &(ipAddress.sin_addr), str, INET_ADDRSTRLEN);
+				    ip_addr = convert_to_string (str);
+				    Logger::bngc_enbue_app().debug ("IP Address : %s NAI_String : %s Tunnel ID: 0x%X ",ip_addr.c_str(), imsi.c_str(), pFlowResMsg->tunnelId[indx]);
 
-				int qfi = pFlowResMsg->qfi;
-				int tunnelid = htonl (pFlowResMsg->tunnelId[indx]);
-                                bngc_enbue_app_inst->update_pdu_info_from_imsi (respImsi, ip_addr, tunnelid, qfi);
+				    bngc_enbue_app_inst->update_pdu_info_from_imsi (respImsi, ip_addr, tunnelid, qfi);
+				}
 			    }
+			}
+			else if(strcmp (iftype.c_str(), "ipoe") == 0)
+			{
+			    Logger::bngc_enbue_app().debug ("NAI_String : %s Tunnel ID: 0x%X ", imsi.c_str(), pFlowResMsg->tunnelId[indx]);
+			    bngc_enbue_app_inst->update_pdu_info_from_imsi (respImsi, ip_addr, tunnelid, qfi);
 			}
 		    }
 		    else if (pFlowResMsg->procId == enbSimAttachReq)
@@ -219,7 +270,7 @@ bngc_enbue_process_response_msg (uint32_t sock_fd)
 
 void bngc_enbue_rx_app(void *)
 {
-    uint32_t nfd = 0;
+    int32_t nfd = 0;
     struct  epoll_event *event;
     const task_id_t task_id = TASK_BNGC_ENBUE_RX_APP;
 
@@ -252,12 +303,81 @@ void bngc_enbue_rx_app(void *)
 	nfd = bngc_enbue_timedwait (event);
 	mtx.lock ();
 	if (nfd > 0) {
-	    bngc_enbue_process_response_msg (nfd);
+	    for(int i = 0; i < nfd; i++)
+	    {
+		if (event[i].events & EPOLLIN)
+		{
+		    if (event[i].data.fd == bngc_enbue_app_inst->bngc_enbue_sock)
+		    {
+			bngc_enbue_process_response_msg (event[i].data.fd);
+		    }
+		    else if (event[i].data.fd == bngc_enbue_app_inst->gtp_sock)
+		    {
+			bngc_enbue_process_gtp_msg (event[i].data.fd);
+		    }
+		}
+	    }
 	}
 	mtx.unlock ();
     }
     return;
 }
+
+int bngc_enbue_app::dp_inst_conf ()
+{
+    int          rc = RETURNerror; 
+    int          len = 0, num_bytes = -1;
+    char         buffer[MAX_DATA_SIZE];
+    tDpInstanceConf dpInstanceConfVar;
+    flow_msg_t   *msg = NULL;
+
+    memset(&dpInstanceConfVar, 0, sizeof(tDpInstanceConf));
+    len = (sizeof(flow_msg_t) + sizeof(tDpInstanceConf) - 1);
+
+    msg = (flow_msg_t *) malloc (len);
+
+    if (NULL == msg)
+    {
+	Logger::bngc_enbue_app().error ("ecgi_add_conf memory allocation failed");
+	return rc; 
+    }
+    memset (msg, 0, len);
+
+    msg->hdr.apiId = dpInstanceConf;
+    msg->hdr.action = SIM_MGMT_ACTION_ADD;
+    msg->hdr.length = len;	
+
+    dpInstanceConfVar.index = 1; 
+    dpInstanceConfVar.dpGtpIpAddress.ip_addr_type = LTE_IP_ADDRESS_IPV4;
+    dpInstanceConfVar.dstIpAddress.ip_addr_type = LTE_IP_ADDRESS_IPV4;
+
+    dpInstanceConfVar.dpGtpIpAddress.ip_addr_u.ip4_addr.addr = inet_addr (bngc_enbue_config[BNGC_ENBUE_IP_ADDR_OPTION].GetString());
+#if 0
+    strcpy(dpInstanceConfVar.phy_inface, gbConfig.scenario[current_scenario].scenarioInputs.phy_inface);
+    dpInstanceConfVar.vlan_id = ; 
+#endif
+    dpInstanceConfVar.dpTeIpAddress.ip_addr_type = LTE_IP_ADDRESS_IPV4;
+    dpInstanceConfVar.dpTeIpAddress.ip_addr_u.ip4_addr.addr = inet_addr (bngc_enbue_config[BNGC_ENBUE_IP_ADDR_OPTION].GetString()); 
+
+    memcpy(msg->payload, &dpInstanceConfVar, sizeof(tDpInstanceConf));
+
+    if (send(bngc_enbue_sock, (char*)msg, len, 0) < 0)
+    {
+	free (msg);
+	return rc;
+    }
+
+    if((num_bytes = recv (bngc_enbue_sock, buffer, sizeof(buffer), 0)) == -1)
+    {
+	free (msg);
+	return rc;
+    }
+
+    tEnbSimGenResp *buff = (tEnbSimGenResp*)((flow_msg_t*)buffer)->payload;
+    free (msg);
+    return RETURNok; 
+}
+
 
 int bngc_enbue_app:: bngc_enbue_ngap_proc ()
 {
@@ -293,6 +413,15 @@ int bngc_enbue_app:: bngc_enbue_ngap_proc ()
 	return rc;
     }
     Logger::bngc_enbue_app().debug ("%s: amf_instance_conf success", __func__ );
+
+    rc = dp_inst_conf ();
+    if (rc != RETURNok)
+    {
+	Logger::bngc_enbue_app().error ("%s: dp_inst_conf failed", __func__ );
+	mtx.unlock ();
+	return rc;
+    }
+    Logger::bngc_enbue_app().debug ("%s: dp_inst_conf success", __func__ );
 
     rc = enb_instance_add ();
     if (rc != RETURNok)
@@ -350,6 +479,26 @@ bngc_enbue_deregister (itti_enbue_deregister_request &ser)
     return rc;
 }
 
+int bngc_enbue_app::
+bngc_enbue_packet (itti_enbue_packet &ser)
+{
+    int rc = RETURNerror;
+
+    int tunnel_id = get_tunnel_id_from_nai (ser.nai_userid);
+    int qfi = get_qfi_from_nai (ser.nai_userid);
+
+    if ((tunnel_id !=0) && (qfi != 0))
+    {
+	    rc = encode_gtp_packet (ser.pkt, ser.len, tunnel_id, qfi, htonl(ser.giaddr), htonl(ser.siaddr));
+    }
+    else
+    {
+	    Logger::bngc_enbue_app().error ("%s: TunnelId not found for %s\n", __func__,ser.nai_userid);
+	    return rc;
+    }
+
+    return rc;
+}
 
 int bngc_enbue_app::
 OpenConnection (const char *address, int port)
@@ -401,17 +550,90 @@ OpenConnection (const char *address, int port)
 	}
     }
 
+    std::string ip = bngc_enbue_config[BNGC_ENBUE_IPADDR_OPTION].GetString(); 
+
+    if (inet_pton (AF_INET, ip.c_str(), buf_in_addr) == 1)
+    {
+	memcpy (&ip_addr, buf_in_addr, sizeof (struct in_addr));
+    }
+
+    uint32_t ip_add = htonl(ip_addr.s_addr);
+    gtp_open_recievesocket(IPPROTO_UDP, &gtp_sock, ip_add, 2152);
+
+    bngc_enbue_register_fd (gtp_sock);
+
     return bngc_enbue_sock;
 }
 
 bool bngc_enbue_app::find_conn_from_session (int session_id)
 {
     for (auto it : pdu_connections) {
-	if(it->session_id == session_id) {
+	if ((it->session_id == session_id) && 
+            (strcmp (it->iftype.c_str(), "pppoe") == 0))
+	{
 	    return true; 
 	}
     }
     return false;
+}
+
+bool bngc_enbue_app::find_conn_from_xid (int session_id)
+{
+    for (auto it : pdu_connections) {
+	if ((it->xid == session_id) && 
+            (strcmp (it->iftype.c_str(), "ipoe") == 0))
+	{
+	    return true; 
+	}
+    }
+    return false;
+}
+bool bngc_enbue_app::find_conn_from_session_id (std::string session)
+{
+    for (auto it : pdu_connections) {
+       if ((it->session == session) &&
+         (strcmp (it->iftype.c_str(), "ipoe") == 0))
+               {
+           return true;
+       }
+    }
+    return false;
+}
+std::shared_ptr<bngc_enbue::pdu_establish_connection> bngc_enbue_app::find_conn_from_nai (char *nai)
+{
+	for (auto it : pdu_connections) {
+		if (strcmp(it->nai_userid, nai) == 0)
+		{
+			return it;
+		}
+	}
+	return NULL;
+}
+
+
+
+
+bool bngc_enbue_app::find_conn_from_session_id (std::string session)
+{
+    for (auto it : pdu_connections) {
+	if ((it->session == session) && 
+	    (strcmp (it->iftype.c_str(), "ipoe") == 0))
+	{
+	    return true; 
+	}
+    }
+    return false;
+}
+
+std::shared_ptr<bngc_enbue::pdu_establish_connection> bngc_enbue_app::find_conn_from_nai (char *nai)
+{
+    for (auto it : pdu_connections) {
+	if (strcmp(it->nai_userid, nai) == 0)
+	{
+	    return it; 
+	}
+    }
+    return NULL;
 }
 
 void bngc_enbue_app::update_pdu_info_from_imsi (char *nai_str, std::string ip_addr, int ngc_tunnel, int qfi)
@@ -421,29 +643,85 @@ void bngc_enbue_app::update_pdu_info_from_imsi (char *nai_str, std::string ip_ad
 		it->ip_addr = ip_addr;
 		it->ngc_tunnel = ngc_tunnel;
 		it->qfi = qfi;
-		construct_message (ip_addr, it->session_id, it->ifname);
+	        if (strcmp (it->iftype.c_str(), "ipoe") == 0)
+			construct_message (ip_addr, it->session_id, it->ifname, it->iftype, it->session);
+		else
+			construct_message (ip_addr, it->session_id, it->ifname, it->iftype, it->session);
+
 	}
     }
 }
 
-int bngc_enbue_app::get_tunnel_id (int session_id)
+int bngc_enbue_app::get_tunnel_id_from_nai (char *nai_str)
 {
     for (auto it : pdu_connections) {
-	    if (it->session_id == session_id)
+	if(strcmp (it->nai_userid, nai_str) == 0) {
 	        return it->ngc_tunnel;
+	}
     }
-
     return 0;
+}
+int bngc_enbue_app::get_qfi_from_nai (char *nai_str)
+{
+    for (auto it : pdu_connections) {
+       if(strcmp (it->nai_userid, nai_str) == 0) {
+               return it->qfi;
+       }
+    }
+    return 0;
+}
+
+std::string bngc_enbue_app::get_ctrl_type_from_nai (char *nai_str)
+{
+    for (auto it : pdu_connections) {
+	if(strcmp (it->nai_userid, nai_str) == 0) {
+	        return it->iftype;
+	}
+    }
+    return "";
+}
+
+int bngc_enbue_app::get_tunnel_id (int session_id)
+{
+	for (auto it : pdu_connections) {
+		if ((it->iftype == "pppoe") &&
+				(it->session_id == session_id))
+			return it->ngc_tunnel;
+	}
+
+	return 0;
+}
+
+int bngc_enbue_app::get_tunnel_id (std::string session_id)
+{
+	for (auto it : pdu_connections) {
+		if ((it->iftype == "ipoe") &&
+				(it->session == session_id))
+			return it->ngc_tunnel;
+	}
+
+	return 0;
 }
 
 int bngc_enbue_app::get_qfi_id (int session_id)
 {
-    for (auto it : pdu_connections) {
-	    if (it->session_id == session_id)
-	        return it->qfi;
-    }
+	for (auto it : pdu_connections) {
+		if ((it->iftype == "pppoe") &&
+				(it->session_id == session_id))
+			return it->qfi;
+	}
 
-    return 0;
+	return 0;
+}
+int bngc_enbue_app::get_qfi_id (std::string session_id)
+{
+	for (auto it : pdu_connections) {
+		if ((it->iftype == "ipoe") &&
+				(it->session == session_id))
+			return it->qfi;
+	}
+
+	return 0;
 }
 
 void bngc_enbue_app::delete_pdu_info (char *nai_str)
@@ -642,7 +920,7 @@ int bngc_enbue_app::ecgi_add_conf ()
 	ecgiConfVar.ecgi.plmn_id.num_mnc_digits = 3;
     }
 
-    strncpy((char *)ecgiConfVar.ecgi.eci.bytes, bngc_enbue_config[BNGC_ENBUE_ECGI_ECI_ID_OPTION].GetString(), LTE_ECI_LEN);
+    strcpy((char *)ecgiConfVar.ecgi.eci.bytes, bngc_enbue_config[BNGC_ENBUE_ECGI_ECI_ID_OPTION].GetString());
     ecgiConfVar.taiIndex = bngc_enbue_config[BNGC_ENBUE_ECGI_TAI_OPTION].GetInt();
     strcpy((char *)ecgiConfVar.ecgi.plmn_id.octets, bngc_enbue_config[BNGC_ENBUE_ECGI_PLMN_ID_OPTION].GetString());
     ecgiConfVar.taiIndex = bngc_enbue_config[BNGC_ENBUE_TAI_INDEX_OPTION].GetInt();
@@ -1058,6 +1336,15 @@ bngc_enbue_form_pdu_request (char *nai_userid)
     attReq.rregparam.bitmask |= SET_PDUSESSIONTYPE;
     attReq.rregparam.pdusessiontype = bngc_enbue_config[BNGC_ENBUE_PDU_SESSION_TYPE_OPTION].GetInt();
 
+    std::string iftype = get_ctrl_type_from_nai (nai_userid);
+
+    /* Indicate delayed IP Allocation in PDU Message */
+    if (strcmp (iftype.c_str(), "ipoe") == 0)
+    {
+	if(!(attReq.rregparam.bitmask |= SET_EXT_DIS_PROT_OPT))
+	    attReq.rregparam.bitmask |= SET_EXT_DIS_PROT_OPT;
+    }
+
     memcpy (msg->payload, &attReq, sizeof (tEnbSimAttachReq));
 
     if(send(bngc_enbue_sock, (char*)msg, len, 0) < 0)
@@ -1159,6 +1446,12 @@ void bngc_enbue_app_task(void*)
                     bngc_enbue_app_inst->bngc_enbue_deregister (std::ref(*ser));
 		}
 		break;
+	     case ENBUE_PACKET:
+                if (itti_enbue_packet* ser =
+	                    dynamic_cast<itti_enbue_packet *>(msg)) {
+                    bngc_enbue_app_inst->bngc_enbue_packet (std::ref(*ser));
+		}
+		break;
 
 	    default:
 		Logger::bngc_enbue_app().debug("Received msg with type %d", msg->msg_type);
@@ -1181,11 +1474,271 @@ bngc_enbue_app::bngc_enbue_app()
         throw std::runtime_error( "Cannot create task TASK_BNGC_ENBUE_RX_APP" );
     }
 
-
     Logger::bngc_enbue_app().startup("Nailed startup");
 }
 
 bngc_enbue_app::~bngc_enbue_app()
 {
     Logger::bngc_enbue_app().debug("Deleting BNGC_ENBUE interface");
+}
+
+/* Create a UDP socket to listen to GTP Messages from 5GC */
+void bngc_enbue_app:: gtp_open_recievesocket(uint16_t protocol_type,
+		int *fd,uint32_t ip_address, uint32_t port)
+{
+    int     sock_fd;
+    struct  sockaddr_in address;
+
+    /*Opening UDP sockets*/
+    if ((sock_fd = socket (AF_INET, SOCK_DGRAM, protocol_type)) < 0 )
+    {
+	perror ("socket");
+	return; 
+    }
+
+    memset (&address, 0, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(ip_address);
+
+    /*Binding the socket*/
+    if (bind (sock_fd, (struct sockaddr *)&address, sizeof(address)) < 0 )
+    {
+	perror ("bind");
+	close(sock_fd);
+	return;
+    }
+
+    *fd = sock_fd;
+
+    return; 
+}
+
+int bngc_enbue_app::ip_parse (const unsigned char *s, t_ipinfo *Z)
+{
+    unsigned int headerlen;
+
+    headerlen = (unsigned)((s[0] & 0x0F) << 2);
+
+    Z->ip_ver = (s[0] & 0xF0) >> 4;
+    Z->ip_len = (unsigned)((s[2] << 8) | s[3]);
+    Z->id = (s[4] << 8) | s[5];
+    Z->proto = s[9];
+    Z->tos = s[1];
+    Z->src_ip = (s[12] << 24) | (s[13] << 16) | (s[14] << 8) | s[15];
+    Z->dst_ip = (s[16] << 24) | (s[17] << 16) | (s[18] << 8) | s[19];
+
+    if( (Z->offset = ((s[6] << 8) | s[7]) & 0x1FFF) == 0 ) {
+	Z->first = 1;
+    } else {
+	Z->first = 0;
+	Z->fragment = 1;
+    }
+
+    if (s[6] & 0x20) {
+	Z->last = 0;
+    } else {
+	Z->last = 1;
+	Z->fragment = Z->first ? 0 : 1;
+    }
+
+    return 20;
+}
+
+int bngc_enbue_app::tcp_parse(const unsigned char *s, t_tcpinfo *Z)
+{
+    unsigned int headerlen;
+
+    headerlen = (unsigned)(((s[12] >> 4) & 0x0F) << 2);
+    Z->src_port = (s[0] << 8) | s[1];
+    Z->dst_port = (s[2] << 8) | s[3];
+
+    return headerlen;
+}
+
+int bngc_enbue_app::udp_parse(const unsigned char *s, t_udpinfo *Z)
+{
+    Z->src_port = (s[0] << 8) | s[1];
+    Z->dst_port = (s[2] << 8) | s[3];
+    Z->len      = (s[4] << 8) | s[5];
+    return 8;
+}
+
+int bngc_enbue_app::sctp_parse(const unsigned char *s, t_sctpinfo *Z)
+{
+    Z->src_port = (s[0] << 8) | s[1];
+    Z->dst_port = (s[2] << 8) | s[3];
+
+    return 12;
+}
+
+uint16_t
+calc_checksum(const int8_t *buf, uint32_t size)
+{
+    uint32_t               sum = 0;
+    uint16_t               tmp = 0;
+
+    while (size > 1)
+    {
+	tmp = *((const uint16_t *) ((const void *) buf));
+	sum += tmp;
+	buf += sizeof (uint16_t);
+	size -= sizeof (uint16_t);
+    }
+
+    if (size == 1)
+    {
+	tmp = 0;
+	*((uint8_t *) &tmp) = (uint8_t) *buf;
+	sum += tmp;
+    }
+
+    sum = (sum >> 16) + (sum & 0xffff);
+    sum += (sum >> 16);
+    tmp = (uint16_t) ~((uint16_t) sum);
+
+    return (ntohs (tmp));
+}
+
+void bngc_enbue_app::construct_ip_header (uint32_t src_ip, uint32_t dst_ip, 
+		uint16_t len, unsigned char *message)
+{
+    t_ip_header hdr;
+
+    memset (&hdr, 0, sizeof(t_ip_header));
+
+    hdr.ver_hdrlen = IP_VERS_AND_HLEN (IP_VERSION_4, 0);
+    hdr.tos = 0; 
+    hdr.totlen = htons (len);
+    hdr.id = 0; 
+    hdr.fl_offs = 0; 
+    hdr.ttl = 64;
+    hdr.proto = IPPROTO_UDP;
+    hdr.cksum = 0; 
+    hdr.src = htonl(src_ip);
+    hdr.dest = htonl(dst_ip);
+    hdr.cksum = calc_checksum ((const int8_t *) &hdr, IP_HDR_LEN);
+    hdr.cksum = htons (hdr.cksum);
+
+    memcpy (message, &hdr, sizeof(t_ip_header));
+    return;
+}
+
+void bngc_enbue_app::construct_udp_header (uint16_t src_port, uint16_t dst_port, 
+		uint16_t len, unsigned char *message)
+{
+    t_udpinfo hdr;
+
+    memset (&hdr, 0, sizeof(t_udpinfo));
+
+    hdr.src_port = htons(src_port);
+    hdr.dst_port = htons(dst_port);
+    hdr.len = htons(len);
+    hdr.checksum = 0;
+
+    memcpy (message, &hdr, sizeof(t_udpinfo));
+
+    return;
+}
+
+int bngc_enbue_app::encode_gtp_packet (char *pkt, int len,
+		uint32_t tied_value, int qfi, uint32_t src_ip, uint32_t dst_ip)
+{
+	struct sockaddr_in  address;
+    struct in_addr      ip_addr = {};
+    unsigned char       buf_in_addr[sizeof(struct in6_addr)];
+    unsigned char       buffer[600];
+    unsigned char      *msg = NULL;
+
+    if (pkt == NULL)
+    {
+	Logger::bngc_app().error("Encode GTP Packet failed. pkt is NULL");
+	return RETURNerror;
+    }
+
+    memset (&buffer, 0, 600);
+    msg = (unsigned char*)&buffer;
+
+    gtp_header_t *gtp_hdr = (gtp_header_t*)(msg);
+
+    /*Forming the GTP header*/
+    gtp_hdr->flag_fields = 0x34 ;
+    gtp_hdr->msg_type = GTPU_PDU;
+    gtp_hdr->length = htons(len + IP_HDR_LEN + UDP_HDR_LEN + GTP_HDR_SIZE);
+    gtp_hdr->tied = htonl(tied_value);
+    gtp_hdr->extension_header_type = 0x85;
+    gtp_hdr->extnHdrLength = 0x01;
+    gtp_hdr->pdu_spare_type = 16; // 0001 0000 // (first 4 bit for PDU TYPE 0 for DL 1 for UL) last 4 bit is spare = 0
+    gtp_hdr->seq_no = 0x00;
+    gtp_hdr->pdu = 0x00;
+    gtp_hdr->qfi = qfi; 
+    gtp_hdr->nextextHeader = 0;
+
+    std::string ip = bngc_enbue_config[BNGC_ENBUE_AMF_SCTP_ADDR_OPTION].GetString(); 
+
+    if (inet_pton (AF_INET, ip.c_str(), buf_in_addr) == 1)
+    {
+	memcpy (&ip_addr, buf_in_addr, sizeof (struct in_addr));
+    }
+
+    address.sin_family = AF_INET;
+    address.sin_port = htons (GTP_UDP_PORT);
+    address.sin_addr.s_addr = ip_addr.s_addr;
+
+    construct_ip_header (src_ip, dst_ip,
+		    (len + IP_HDR_LEN + UDP_HDR_LEN), (msg + GTP_HDR_SIZE));
+
+    construct_udp_header (DHCP_SERV_PORT, DHCP_SERV_PORT,
+		    (len + UDP_HDR_LEN), (msg + IP_HDR_LEN + GTP_HDR_SIZE));
+
+
+    memcpy ((msg + GTP_HDR_SIZE + IP_HDR_LEN + UDP_HDR_LEN), pkt, len);
+
+    if (sendto (gtp_sock, buffer, (len + GTP_HDR_SIZE + IP_HDR_LEN + UDP_HDR_LEN), 0,
+		(struct sockaddr *)&address, sizeof(address)) < 0 )
+    {
+	Logger::bngc_app().error("%s: sendto failed !! ",__FUNCTION__);
+	return RETURNerror; 
+    }
+
+    return RETURNok;
+}
+
+int bngc_enbue_app::decode_gtp_packet (void *ptr)
+{
+    t_payload       payload;
+    int             temp_len = 0;
+    int             len = GTP_HDR_SIZE;
+    uint32_t        tied_val = 0;
+    uint32_t        from_addr =0;
+    uint8_t         *tmp_msg = NULL;
+    uint8_t         *message = NULL;
+    struct sockaddr_in msg_from;
+
+    message = (uint8_t *)ptr;
+    temp_len = len;
+
+    temp_len += ip_parse( message + len , &(payload.pkt_info.ip));
+    payload.total_len = payload.pkt_info.ip.ip_len;
+
+    tmp_msg = (message + 4);
+
+    tied_val = *((uint32_t*)tmp_msg);
+
+    /*Extracting the tied value from GTP Header*/
+    tied_val = ntohl(tied_val);
+    from_addr = ntohl(msg_from.sin_addr.s_addr);
+
+    if (payload.pkt_info.ip.proto == IP_UDP) 
+    {
+	temp_len += udp_parse(message + temp_len, &(payload.pkt_info.udp));
+	/* DHCP Packet */
+	if (payload.pkt_info.udp.src_port == 67 || payload.pkt_info.udp.dst_port == 67)
+	{
+	    Logger::bngc_app().debug("DHCP Packet received ");
+	    construct_redis_packet (message + temp_len, payload.pkt_info.udp.len);
+	}
+    }
+
+    return RETURNok;
 }

@@ -118,7 +118,8 @@ void msg_callback(std::string channel, std::string msg)
  * - circuit_id
  * - remote_id */
 
-void construct_message (std::string ip_addr, int session_id, std::string ifname)
+void construct_message (std::string ip_addr, int session_id, std::string ifname, 
+	                std::string iftype, std::string session)
 {
     std::string msg;
     int rc; // Return code for requests
@@ -130,10 +131,65 @@ void construct_message (std::string ip_addr, int session_id, std::string ifname)
 
     rapidjson::Value value(ip_addr.c_str(), ip_addr.size(), d.GetAllocator());
     rapidjson::Value ifname_value(ifname.c_str(), ifname.size(), d.GetAllocator());
+    rapidjson::Value iftype_value(iftype.c_str(), iftype.size(), d.GetAllocator());
+    rapidjson::Value sessionid_value(session.c_str(), session.size(), d.GetAllocator());
 
-    d.AddMember("ip_addr", value, allocator);
-    d.AddMember("pppoe_id", session_id, allocator);
+    d.AddMember("ctrl_iftype", iftype_value, allocator);
     d.AddMember("ctrl_ifname", ifname_value, allocator);
+
+    if (strcmp (iftype.c_str(), "pppoe") == 0)
+    {
+	d.AddMember("ip_addr", value, allocator);
+	d.AddMember("pppoe_id", session_id, allocator);
+    }
+    else if (strcmp (iftype.c_str(), "ipoe") == 0)
+    {
+	d.AddMember("xid", session_id, allocator);
+        d.AddMember("session_id", sessionid_value, allocator);
+    }
+
+    rapidjson::StringBuffer strbuf;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(strbuf);
+    d.Accept(writer);
+
+    msg = strbuf.GetString();
+
+    Logger::redis_client().debug("Sending Message to redis: %s ", strbuf.GetString());
+
+    // Shared pointer for itti redis message
+    std::shared_ptr<itti_new_redis_pub_msg> itti_redis_pub_msg_ptr;
+
+    // Creating ITTI msg. We set the source task as BNGC APP since this thread is not an itti task
+    itti_new_redis_pub_msg *redis_msg = new itti_new_redis_pub_msg(TASK_BNGC_APP, TASK_REDIS_CLIENT, msg);
+
+    itti_redis_pub_msg_ptr = std::shared_ptr<itti_new_redis_pub_msg>(redis_msg);
+
+    rc = itti_inst->send_msg(itti_redis_pub_msg_ptr);
+    if (rc != RETURNok) {
+	Logger::redis_client().error("Error sending redis ITTI msg to redis tak");
+    }
+    return;
+}
+
+void construct_redis_packet (uint8_t *message, int len)
+{
+    std::string msg;
+    int rc; // Return code for requests
+    rapidjson::Document d;
+    std::string iftype = "ipoe";
+
+    rapidjson::Value array(rapidjson::kArrayType);
+
+    d.SetObject();
+
+    rapidjson::Document::AllocatorType& allocator = d.GetAllocator();
+
+    for (int i = 0; i <= len; i++)
+       array.PushBack(*(message+i), allocator); 
+
+    rapidjson::Value iftype_value(iftype.c_str(), iftype.size(), d.GetAllocator());
+    d.AddMember("ctrl_iftype", iftype_value, allocator);
+    d.AddMember("packet", array, allocator);
 
     rapidjson::StringBuffer strbuf;
     rapidjson::Writer<rapidjson::StringBuffer> writer(strbuf);
@@ -266,7 +322,8 @@ void redis_client::process_redis_msg(itti_new_redis_msg &redis_msg)
 
     // Only process session-acct-start events for now
     if(event.compare(SESSION_ACCT_START) != 0 && event.compare(SESSION_PRE_FINISHED) != 0 &&
-      event.compare(SESSION_5G_REGISTER_START) != 0 && event.compare(SESSION_5G_REGISTER_STOP) != 0)
+      event.compare(SESSION_5G_REGISTER_START) != 0 && event.compare(SESSION_5G_REGISTER_STOP) != 0 &&
+      event.compare(SESSION_5G_PACKET) != 0 )
     {
         Logger::redis_client().debug("Ignoring message with event %s", event.c_str());
         return;
@@ -374,6 +431,32 @@ void redis_client::process_redis_msg(itti_new_redis_msg &redis_msg)
         if (rc != RETURNok) {
             Logger::redis_client().error("Error sending session establishment request ITTI msg to BNGC_ENBUE");
         }
+    }
+    else if(!event.compare(SESSION_5G_PACKET)) {
+	/* Process registration message from accel-ppp */
+	// Shared pointer for sereq message
+	std::shared_ptr<itti_enbue_packet> itti_pkt_ptr;
+
+	// Create itti message to generate session establishment request
+	itti_enbue_packet *itti_pkt =
+	    new itti_enbue_packet(TASK_REDIS_CLIENT, TASK_BNGC_ENBUE_APP);
+
+	// Translate redis message to pfcp session establishment request
+	rc = translate_ppp_to_5g_pkt (d, itti_pkt);
+
+	if (rc == RETURNerror) {
+	    Logger::redis_client().error("Error parsing redis message to ENBUE session establishment request");
+	    delete itti_pkt;
+	    return;
+	}
+
+	itti_pkt_ptr = std::shared_ptr<itti_enbue_packet>(itti_pkt);
+
+	// Send message to BNGC ENBUE
+	rc = itti_inst->send_msg(itti_pkt_ptr);
+	if (rc != RETURNok) {
+	    Logger::redis_client().error("Error sending session establishment request ITTI msg to BNGC_ENBUE");
+	}
     }
 }
 

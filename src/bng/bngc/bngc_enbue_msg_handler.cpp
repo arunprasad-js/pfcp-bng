@@ -45,7 +45,7 @@ int bngc_enbue::translate_ppp_to_5g_session_establishment(Document &d,
     std::string remote_id = d[PPPD_REMOTE_ID].GetString();
     std::string lineid_source = bngc_enbue_config[BNGC_ENBUE_LINEID_SOURCE_OPTION].GetString();
     std::string ifname = d[PPPD_CTRL_IFNAME].GetString();
-    int pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
+    std::string iftype = d[PPPD_CTRL_IFTYPE].GetString();
     char nai_userid[MAX_NAI_LEN];
 
     int circuit_id_len = circuit_id.size ();
@@ -60,15 +60,41 @@ int bngc_enbue::translate_ppp_to_5g_session_establishment(Document &d,
 
     strcpy ((itti_reg_req->nai_userid), nai_userid);
 
-    pdu_establish_connection *p = new (pdu_establish_connection);
+    std::shared_ptr<bngc_enbue::pdu_establish_connection> ptr;
 
-    if (bngc_enbue_app_inst->find_conn_from_session (pppoe_session_id_int) == true)
+    if ((ptr = bngc_enbue_app_inst->find_conn_from_nai (nai_userid)) != NULL)
     {
-	Logger::bngc_enbue_app().debug("Session Id present in conn table ");
-	return RETURNok;
+        Logger::bngc_enbue_app().debug("Session Id present in conn table ");
+        return RETURNerror;
     }
 
-    p->session_id = pppoe_session_id_int;
+    pdu_establish_connection *p = new (pdu_establish_connection);
+
+    if (strcmp (iftype.c_str(), "pppoe") == 0)
+    {
+        int pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
+	if (bngc_enbue_app_inst->find_conn_from_session (pppoe_session_id_int) == true)
+	{
+	    Logger::bngc_enbue_app().debug("Session Id present in conn table ");
+	    return RETURNerror;
+	}
+        p->session_id = pppoe_session_id_int;
+    }
+    else if (strcmp (iftype.c_str(), "ipoe") == 0)
+    {
+	int xid = d[PPPD_DHCP_SESSIONID].GetInt();
+        std::string session = d[PPPD_SESSIONID].GetString();
+
+	if (bngc_enbue_app_inst->find_conn_from_session_id (session) == true)
+	{
+	    Logger::bngc_enbue_app().debug("Session Id present in conn table ");
+	    return RETURNerror;
+	}
+	p->session = session;
+	p->xid = xid; 
+    }
+
+    p->iftype = iftype;
     p->circuit_id = circuit_id;
     p->remote_id = remote_id;
     p->ifname = ifname;
@@ -83,16 +109,16 @@ int bngc_enbue::translate_ppp_to_5g_session_establishment(Document &d,
     return RETURNok;
 }
 
-
 int bngc_enbue::translate_ppp_to_5g_session_release (Document &d,
     itti_enbue_deregister_request *itti_dereg_req)
 {
     std::string circuit_id = d[PPPD_CIRCUIT_ID].GetString();
     std::string remote_id = d[PPPD_REMOTE_ID].GetString();
     std::string lineid_source = bngc_enbue_config[BNGC_ENBUE_LINEID_SOURCE_OPTION].GetString();
-    int pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
     char nai_userid[MAX_NAI_LEN];
-
+    std::string ifname = d[PPPD_CTRL_IFNAME].GetString();
+    std::string iftype = d[PPPD_CTRL_IFTYPE].GetString();
+ 
     int circuit_id_len = circuit_id.size ();
     int remote_id_len = remote_id.size ();
 
@@ -102,6 +128,75 @@ int bngc_enbue::translate_ppp_to_5g_session_release (Document &d,
     sprintf (nai_userid , "%s01%d%s02%d%s", lineid_source.c_str(),circuit_id_len, circuit_id.c_str(), remote_id_len, remote_id.c_str());
 
     strcpy ((itti_dereg_req->nai_userid), nai_userid);
+    Logger::bngc_enbue_app().debug("NAI User Id : %s",nai_userid);
+
+    std::shared_ptr<bngc_enbue::pdu_establish_connection> ptr;
+
+    if ((ptr = bngc_enbue_app_inst->find_conn_from_nai (nai_userid)) == NULL)
+    {
+        Logger::bngc_enbue_app().debug("Session Id not present in conn table ");
+        return RETURNerror;
+    }
+
+    if (iftype != ptr->iftype)
+    {
+        Logger::bngc_enbue_app().debug("Ignoring the message due to iftype mismatch");
+        return RETURNerror;
+    }
+    
+    if (iftype == "pppoe")
+    {
+	int pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
+
+	if (pppoe_session_id_int != ptr->session_id)
+	{
+	    Logger::bngc_enbue_app().debug("Ignoring the message due to session_id mismatch");
+	    return RETURNerror;
+	}
+    }
+    else
+    {
+	std::string session = d[PPPD_SESSIONID].GetString();
+
+	if (session != ptr->session)
+	{
+	    Logger::bngc_enbue_app().debug("Ignoring the message due to session mismatch");
+	    return RETURNerror;
+	}
+    }
+
+    return RETURNok;
+}
+
+int bngc_enbue::translate_ppp_to_5g_pkt (Document &d,
+    itti_enbue_packet *itti_pkt)
+{
+    const Value &a = d[SESSION_5G_PACKET];
+    std::string circuit_id = d[PPPD_CIRCUIT_ID].GetString();
+    std::string remote_id = d[PPPD_REMOTE_ID].GetString();
+    std::string lineid_source = bngc_enbue_config[BNGC_ENBUE_LINEID_SOURCE_OPTION].GetString();
+    char nai_userid[MAX_NAI_LEN];
+    int circuit_id_len = circuit_id.size ();
+    int remote_id_len = remote_id.size ();
+
+    assert(a.IsArray());
+    for (SizeType i = 0; i < a.Size(); i++) // rapidjson uses SizeType instead of size_t.
+    {
+	itti_pkt->pkt[i] = (char )a[i].GetInt();
+    }
+
+    itti_pkt->len = a.Size();
+
+    itti_pkt->siaddr = d[PPPD_SIADDR].GetInt();
+    itti_pkt->giaddr = d[PPPD_GIADDR].GetInt();
+
+    Logger::bngc_enbue_app().debug("Circuit ID: %s", circuit_id.c_str());
+    Logger::bngc_enbue_app().debug("Remote ID: %s", remote_id.c_str());
+
+    sprintf (nai_userid , "%s01%d%s02%d%s", lineid_source.c_str(), circuit_id_len, 
+	    circuit_id.c_str(), remote_id_len, remote_id.c_str());
+    strcpy ((itti_pkt->nai_userid), nai_userid);
+
     Logger::bngc_enbue_app().debug("NAI User Id : %s",nai_userid);
 
     return RETURNok;

@@ -64,6 +64,7 @@ namespace bngc_enbue {
 #define SET_PDUREQUESTTYPE              0x02
 #define SET_PDUSESSIONTYPE              0x04
 #define SET_5GSM_CAUSE                  0x08
+#define SET_EXT_DIS_PROT_OPT            0x200 
 #define SET_DNN                         0x800
 #define LTE_IP4_ADDR_LEN                4
 #define LTE_IP6_ADDR_LEN                16
@@ -103,11 +104,6 @@ typedef enum {
 	SIM_MGMT_ACTION_GET,
 	SIM_MGMT_ACTION_CMD
 } eSimMgmtAction;
-
-typedef enum {
-    EXT_SUCCESS=0,
-    EXT_FAILURE
-} eLteResult;
 
 /* IMSI Structure */
 typedef struct {
@@ -246,6 +242,22 @@ typedef struct
 }tEnbInstanceConf;
 
 
+typedef struct
+{
+    uint16_t         index;
+    lte_ip_address_t dpGtpIpAddress; /* Only IPv4 is used in this. */
+    uint8_t          phy_inface[255];
+    uint16_t         vlan_id;
+    lte_ip_address_t dpTeIpAddress;
+    lte_ip_address_t dstIpAddress;
+    uint16_t         fd;
+}tDpInstanceConf;
+
+typedef enum {
+    EXT_SUCCESS=0,
+    EXT_FAILURE
+} eLteResult;
+
 typedef enum { 
     LTE_MGMT_ACTION_ADD = 0, 
     LTE_MGMT_ACTION_DEL, 
@@ -306,6 +318,7 @@ typedef struct
     unsigned char  protkeyavaialable;
     unsigned char  amfIndx;
     stNssaiList    nssaiList;
+    unsigned int   ValidateAllowedNssai;
     unsigned short rid;
     char           userName[SIM_MAX_NAI_USERNAME_LEN];
 }ranRegReqParam;
@@ -412,6 +425,81 @@ typedef struct
     uint8_t            payload[1];    
 }tEnbSimFlowGenResp;
 
+typedef struct {
+    uint16_t src_port, dst_port;
+    uint16_t len, checksum;
+} t_tcpinfo, t_udpinfo, t_sctpinfo;
+
+typedef struct {
+    uint8_t      ip_ver;
+    uint16_t     ip_len;
+    uint32_t     src_ip, dst_ip;
+    uint8_t      proto, tos;
+    uint16_t     offset, id;
+    uint8_t      first, last, fragment;
+} t_ipinfo;
+
+typedef struct {
+    uint8_t   flag_fields;
+    uint8_t   msg_type;
+    uint16_t  length;
+    uint32_t  tied;
+    uint16_t  seq_no;
+    uint8_t   pdu;
+    uint8_t   extension_header_type;
+    uint8_t   extnHdrLength;
+    uint8_t   pdu_spare_type;
+    uint8_t   qfi;
+    uint8_t   nextextHeader;
+}gtp_header_t; 
+
+typedef struct {
+    t_ipinfo    ip;
+    t_tcpinfo   tcp;
+    t_udpinfo   udp;
+    t_sctpinfo  sctp;
+} t_pktinfo;
+
+typedef struct {
+    t_pktinfo pkt_info;
+    unsigned char *buffer;
+    unsigned int
+	total_len,
+	l3_offset,
+	l4_offset;
+    unsigned int verdict_given,transform;
+} t_payload;
+
+typedef struct
+{
+    uint8_t              ver_hdrlen;  /* Version + Header Length */
+    uint8_t              tos;         /* Type of service */
+    uint16_t             totlen;      /* Total length  IP header + DATA */
+    uint16_t             id;          /* Identification */
+    uint16_t             fl_offs;     /* Flags + fragment offset */
+    uint8_t              ttl;         /* Time to live */
+    uint8_t              proto;       /* Protocol */
+    uint16_t             cksum;       /* Checksum value */
+    uint32_t             src;         /* Source address */
+    uint32_t             dest;        /* Destination address */
+    uint8_t              options[4];  /* Options field */
+} t_ip_header;
+
+#define IP_HDR_LEN      20
+#define UDP_HDR_LEN     8
+#define IP_VERSION_4    4
+
+#define   IP_VERS_AND_HLEN(version, opt_len) \
+          ((version << 4) | (uint8_t)((opt_len + IP_HDR_LEN)>>2))
+
+#define GTPU_PDU        0xFF
+#define IP_TCP          6
+#define IP_UDP          17
+#define IP_SCTP         132
+#define GTP_UDP_PORT    2152
+#define GTP_HDR_SIZE    16
+#define DHCP_SERV_PORT  67
+
 class pdu_establish_connection
 {
     public:
@@ -419,10 +507,13 @@ class pdu_establish_connection
 	std::string circuit_id;
 	std::string remote_id;
 	std::string ifname;
+	std::string iftype;
+	std::string session;
 	int session_id;
 	int ngc_tunnel;
 	int qfi;
         char nai_userid[150]; 
+	int xid;
         std::vector<std::shared_ptr<pdu_establish_connection>> pdu_connections; // was list
 };
 
@@ -433,12 +524,14 @@ public:
     ~bngc_enbue_app();
 
     int bngc_enbue_sock;
+    int gtp_sock;
     int OpenConnection (const char *buf_in_addr, int port);
     int bngc_enbue_ngap_proc ();
     int ecgi_add_conf ();
     int enb_instance_add ();
     int tai_conf_add ();
     int amf_instance_conf ();
+    int dp_inst_conf ();
     int bngc_enbue_form_attach_request (char *nai_userid);
     int bngc_enbue_form_detach_request (char *nai_userid);
     int bngc_enbue_form_pdu_request (char *nai_userid);
@@ -449,11 +542,30 @@ public:
     std::vector<std::shared_ptr<pdu_establish_connection>> pdu_connections; // was list
     void update_conn_from_session (int session_id);
     bool find_conn_from_session (int session_id);
+    bool find_conn_from_xid (int session_id);
+    bool find_conn_from_session_id (std::string session);
+    std::shared_ptr<bngc_enbue::pdu_establish_connection> find_conn_from_nai (char *nai);
     void update_pdu_info_from_imsi (char *nai_str, std::string ip_addr, int ngc_tunnel, int qfi);
+    std::string get_ctrl_type_from_nai (char *nai_str);
     void print_list ();
     void delete_pdu_info (char *nai_str);
-    int  get_tunnel_id (int session_id);
-    int  get_qfi_id (int session_id);
+    int get_tunnel_id (int session_id);
+    int get_tunnel_id (std::string session_id);
+    int get_tunnel_id_from_nai (char *nai_str);
+    int get_qfi_id (int session_id);
+    int get_qfi_id (std::string session_id);
+    int get_qfi_from_nai (char *nai_str);
+    int bngc_enbue_packet (itti_enbue_packet &ser);
+    int decode_gtp_packet (void *ptr);
+    int encode_gtp_packet (char *pkt, int len, uint32_t tied_value, int qfi, uint32_t src_ip, uint32_t dst_ip);
+    void gtp_open_recievesocket(uint16_t protocol_type, int *fd, uint32_t ip_address, uint32_t port);
+    void construct_ip_header (uint32_t src_ip, uint32_t dst_ip, uint16_t len, unsigned char *message);
+    void construct_udp_header (uint16_t src_port, uint16_t dst_port, uint16_t len, unsigned char *message);
+    int ip_parse (const unsigned char *s, t_ipinfo *Z);
+    int tcp_parse(const unsigned char *s, t_tcpinfo *Z);
+    int udp_parse(const unsigned char *s, t_udpinfo *Z);
+    int sctp_parse(const unsigned char *s, t_sctpinfo *Z);
 };
+
 }
 #endif /* FILE_BNGC_ENBUE_APP_HPP_SEEN */

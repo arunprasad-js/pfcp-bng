@@ -14,7 +14,6 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-
 #ifndef FILE_BNGC_ENBUE_MSG_HANDLER_HPP_SEEN
 #define FILE_BNGC_ENBUE_MSG_HANDLER_HPP_SEEN
 
@@ -26,6 +25,9 @@
 #define PPPD_REMOTE_ID "remote_id"
 #define SESSION_5G_REGISTER_START "register"
 #define SESSION_5G_REGISTER_STOP "deregister"
+#define SESSION_5G_PACKET "packet"
+#define PPPD_SIADDR "siaddr"
+#define PPPD_GIADDR "giaddr"
 
 #define DEFAULT_TRAFFIC_ENDPOINT_ID 1
 
@@ -37,6 +39,8 @@ int translate_ppp_to_5g_session_establishment(rapidjson::Document &d,
 int translate_ppp_to_5g_session_release (rapidjson::Document &d,
     itti_enbue_deregister_request *itti_dereg_req);
 
+int translate_ppp_to_5g_pkt (rapidjson::Document &d,
+    itti_enbue_packet *itti_pkt);
 }
 
 #endif /* FILE_BNGC_ENBUE_MSG_HANDLER_HPP_SEEN */

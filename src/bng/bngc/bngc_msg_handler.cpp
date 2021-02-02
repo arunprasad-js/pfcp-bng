@@ -51,7 +51,7 @@ bool bngc::validate_pppd_json_msg(Document &d)
 		&& d.HasMember(PPPD_CTRL_IFNAME)
 		&& d.HasMember(PPPD_CALLED_SESSION_ID)
 		&& d.HasMember(PPPD_CALLING_SESSION_ID)
-		&& d.HasMember(PPPD_PPPOE_SESSIONID);
+		&& (d.HasMember(PPPD_PPPOE_SESSIONID) || d.HasMember(PPPD_SESSIONID));
     }
     else if (event.compare(SESSION_5G_REGISTER_START) == 0)
     {
@@ -59,6 +59,7 @@ bool bngc::validate_pppd_json_msg(Document &d)
 		&& d.HasMember(PPPD_CIRCUIT_ID)
 		&& d.HasMember(PPPD_REMOTE_ID);
     }
+    return 1;
 }
 
 // Creates a 64 bit session ID based on the hash value of nas ID and PPPoE session ID
@@ -128,7 +129,8 @@ int bngc::generate_upstream_pdr_ie(pfcp::create_pdr *create_pdr,
 
 int bngc::generate_downstream_pdr_ie(pfcp::create_pdr *create_pdr,
         std::string ip_addr, std::string calling_station_id,
-        pfcp::far_id_t far_id, int pppoe_session_id_int)
+        pfcp::far_id_t far_id, int pppoe_session_id_int,
+	std::string session_id, std::string ctrl_iftype)
 {
     unsigned char ue_in_addr_chr[sizeof (struct in_addr)+1]; // For translating ip addr e to binary format
 
@@ -184,7 +186,14 @@ int bngc::generate_downstream_pdr_ie(pfcp::create_pdr *create_pdr,
 
     pfcp::qfi_t qfi;
 
-    qfi.qfi = bngc_enbue_app_inst->get_qfi_id (pppoe_session_id_int);
+    if (ctrl_iftype == "pppoe")
+    {
+	qfi.qfi = bngc_enbue_app_inst->get_qfi_id (pppoe_session_id_int);
+    }
+    else
+    {
+	qfi.qfi = bngc_enbue_app_inst->get_qfi_id (session_id);
+    }
 
     epf.set(epf_mac_address);
 
@@ -293,11 +302,11 @@ int bngc::generate_create_traffic_endpoint_ie(
         pfcp::create_traffic_endpoint *create_traffic_endpoint,
         uint8_t endpoint_id, std::string called_station_id,
         std::string ctrl_ifname, int pppoe_session_id_int,
-	std::string ip_addr)
+	std::string ip_addr, std::string session_id, std::string ctrl_iftype)
 {
     unsigned int bytes[6]; // Used to read mac addresses from strings
     unsigned char ue_in_addr_chr[sizeof (struct in_addr)+1]; // For translating ip addr e to binary format
-    int i;
+    int i, teid;
 
     pfcp::traffic_endpoint_id_t traffic_endpoint_id = {};
     traffic_endpoint_id.traffic_endpoint_id = endpoint_id;
@@ -325,7 +334,7 @@ int bngc::generate_create_traffic_endpoint_ie(
         Logger::bngc_app().error("Error getting S-TAG and C-TAG values");
         return RETURNerror;
     }
-    
+
     // PPPoE Session ID
     pfcp::pppoe_session_id_t pppoe_session_id = {};
     pppoe_session_id.pppoe_session_id = (uint16_t)pppoe_session_id_int;
@@ -337,7 +346,15 @@ int bngc::generate_create_traffic_endpoint_ie(
     }
 
     // F-TEID (Fully Qualified TEID) set to BNGC address + Tunnel ID
-    int teid = bngc_enbue_app_inst->get_tunnel_id (pppoe_session_id_int);
+    if (ctrl_iftype == "pppoe")
+    {
+	teid = bngc_enbue_app_inst->get_tunnel_id (pppoe_session_id_int);
+    }
+    else
+    {
+        teid = bngc_enbue_app_inst->get_tunnel_id (session_id);
+    }
+
     pfcp::fteid_t cp_fteid_ie = {};
     cp_fteid_ie.v4 = 1;
     cp_fteid_ie.teid = teid;
@@ -365,12 +382,23 @@ int bngc::translate_ppp_to_pfcp_session_establishment(Document &d,
     int rc;
     seid_t seid;
     teid_t teid;
+    int pppoe_session_id_int = 0; 
+    std::string session_id; 
 
     std::string ip_addr = d[PPPD_IP_ADDR].GetString();
     std::string ctrl_ifname = d[PPPD_CTRL_IFNAME].GetString();
     std::string called_station_id = d[PPPD_CALLED_SESSION_ID].GetString();
     std::string calling_station_id = d[PPPD_CALLING_SESSION_ID].GetString();
-    int pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
+    std::string ctrl_iftype = d[PPPD_CTRL_IFTYPE].GetString();
+
+    if (ctrl_iftype == "pppoe")
+    {
+	pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
+    }
+    else
+    {
+	session_id = d[PPPD_SESSIONID].GetString();
+    }
 
     std::string nas_id;
 
@@ -378,7 +406,8 @@ int bngc::translate_ppp_to_pfcp_session_establishment(Document &d,
     Logger::bngc_app().debug("ctrl_ifname: %s", ctrl_ifname.c_str());
     Logger::bngc_app().debug("called_station_id %s", called_station_id.c_str());
     Logger::bngc_app().debug("calling_station_id: %s", calling_station_id.c_str());
-    Logger::bngc_app().debug("pppoe_sessionid: %d", pppoe_session_id_int);
+    if(d.HasMember(PPPD_PPPOE_SESSIONID))
+        Logger::bngc_app().debug("pppoe_sessionid: %d", pppoe_session_id_int);
 
     if(d.HasMember(PPPD_NAS_ID)) {
         nas_id = d[PPPD_NAS_ID].GetString();
@@ -479,7 +508,8 @@ int bngc::translate_ppp_to_pfcp_session_establishment(Document &d,
     }
 
     rc = generate_downstream_pdr_ie(&create_downstream_pdr, ip_addr,
-            calling_station_id, downstream_far_id, pppoe_session_id_int);
+            calling_station_id, downstream_far_id, pppoe_session_id_int,
+	    session_id, ctrl_iftype);
 
     if(rc != RETURNok) {
         Logger::bngc_app().error("Error creating upstream PDR IE");
@@ -489,7 +519,8 @@ int bngc::translate_ppp_to_pfcp_session_establishment(Document &d,
     // Create traffic endpoint (auxiliary fields)
     pfcp::create_traffic_endpoint create_traffic_endpoint = {};
     rc = generate_create_traffic_endpoint_ie(&create_traffic_endpoint,
-            traffic_endpoint_id, called_station_id, ctrl_ifname, pppoe_session_id_int, ip_addr);
+            traffic_endpoint_id, called_station_id, ctrl_ifname, pppoe_session_id_int, ip_addr,
+	    session_id, ctrl_iftype);
 
     if(rc != RETURNok) {
         Logger::bngc_app().error("Error creating traffic endpoint");
@@ -512,10 +543,13 @@ int bngc::translate_ppp_to_pfcp_session_deletion(Document &d,
 
     std::string nas_id;
     seid_t seid;
+    int pppoe_session_id_int; 
 
-    int pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
-
-    Logger::bngc_app().debug("pppoe_sessionid: %d", pppoe_session_id_int);
+    if(d.HasMember(PPPD_PPPOE_SESSIONID))
+    {
+	pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
+	Logger::bngc_app().debug("pppoe_sessionid: %d", pppoe_session_id_int);
+    }
 
     if(d.HasMember(PPPD_NAS_ID)) {
         nas_id = d[PPPD_NAS_ID].GetString();

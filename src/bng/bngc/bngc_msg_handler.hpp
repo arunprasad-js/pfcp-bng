@@ -27,6 +27,9 @@
 #define PPPD_CALLING_SESSION_ID "calling_station_id"
 #define PPPD_PPPOE_SESSIONID "pppoe_sessionid"
 #define PPPD_NAS_ID "nas_identifier"
+#define PPPD_CTRL_IFTYPE "ctrl_type"
+#define PPPD_DHCP_SESSIONID "xid"
+#define PPPD_SESSIONID "session_id"
 
 #define SESSION_ACCT_START "session-acct-start"
 #define SESSION_PRE_FINISHED "session-pre-finished"
@@ -41,8 +44,11 @@ seid_t generate_session_id(std::string nas_id, int pppoe_session_id);
 
 int generate_upstream_pdr_ie(pfcp::create_pdr *create_pdr,
         std::string called_station_id, pfcp::far_id_t far_id);
-int generate_downstream_pdr_ie(pfcp::create_pdr *create_pdr, std::string ip_addr,
-        std::string calling_station_id, pfcp::far_id_t far_id, int pppoe_session_id);
+
+int generate_downstream_pdr_ie(pfcp::create_pdr *create_pdr,
+        std::string ip_addr, std::string calling_station_id,
+        pfcp::far_id_t far_id, int pppoe_session_id_int,
+	std::string session_id, std::string ctrl_iftype);
 
 int generate_upstream_far_ie(pfcp::create_far *create_far,
         pfcp::far_id_t *far_id);
@@ -54,9 +60,9 @@ bool get_vlan_tags_from_ctrl_ifname(std::string ctrl_ifname, pfcp::s_tag_t *s_ta
 
 int generate_create_traffic_endpoint_ie(
         pfcp::create_traffic_endpoint *create_traffic_endpoint,
-        uint8_t traffic_endpoint_id, std::string called_station_id,
+        uint8_t endpoint_id, std::string called_station_id,
         std::string ctrl_ifname, int pppoe_session_id_int,
-	std::string ip_addr);
+	std::string ip_addr, std::string session_id, std::string ctrl_iftype);
 
 int translate_ppp_to_pfcp_session_establishment(rapidjson::Document &d,
     itti_sxab_session_establishment_request *itti_sereq);

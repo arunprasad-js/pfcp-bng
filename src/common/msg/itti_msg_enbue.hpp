@@ -23,7 +23,6 @@
 #define ITTI_MSG_ENBUE_HPP_INCLUDED_
 
 #include "itti_msg.hpp"
-#include "msg_pfcp.hpp"
 
 #define MAX_NAI_LEN 150
 
@@ -59,6 +58,20 @@ public:
   const char* get_msg_name() {return typeid(itti_enbue_deregister_request).name();};
 
 };
+
+//-----------------------------------------------------------------------------
+class itti_enbue_packet : public itti_enbue_msg {
+public:
+  itti_enbue_packet(const task_id_t origin, const task_id_t destination):
+    itti_enbue_msg(ENBUE_PACKET, origin, destination) {  }
+
+  const char* get_msg_name() {return typeid(itti_enbue_packet).name();};
+  int len;
+  char pkt[1500];
+  int siaddr;
+  int giaddr;
+};
+
 
 
 #endif
