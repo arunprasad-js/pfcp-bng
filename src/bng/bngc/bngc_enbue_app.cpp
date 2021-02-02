@@ -588,30 +588,6 @@ bool bngc_enbue_app::find_conn_from_xid (int session_id)
     }
     return false;
 }
-bool bngc_enbue_app::find_conn_from_session_id (std::string session)
-{
-    for (auto it : pdu_connections) {
-       if ((it->session == session) &&
-         (strcmp (it->iftype.c_str(), "ipoe") == 0))
-               {
-           return true;
-       }
-    }
-    return false;
-}
-std::shared_ptr<bngc_enbue::pdu_establish_connection> bngc_enbue_app::find_conn_from_nai (char *nai)
-{
-	for (auto it : pdu_connections) {
-		if (strcmp(it->nai_userid, nai) == 0)
-		{
-			return it;
-		}
-	}
-	return NULL;
-}
-
-
-
 
 bool bngc_enbue_app::find_conn_from_session_id (std::string session)
 {
