@@ -448,19 +448,29 @@ int bngc_enbue_app::get_qfi_id (int session_id)
 
 void bngc_enbue_app::delete_pdu_info (char *nai_str)
 {
+#if 0
     std::vector<std::shared_ptr<pdu_establish_connection>>::iterator iter; 
-    
+
     iter = pdu_connections.begin();
 
     for (auto it : pdu_connections) {
 
-	    if (iter == pdu_connections.end())
-	        break;
+	if (iter == pdu_connections.end())
+	    break;
 
 	if(strcmp (it->nai_userid, nai_str) == 0) {
 	    bngc_enbue_app_inst->pdu_connections.erase (iter);
 	}
 	iter ++;
+    }
+#endif
+
+    for (std::vector<std::shared_ptr<pdu_establish_connection>>::iterator it = pdu_connections.begin();
+	    it < pdu_connections.end(); ++it) {
+	if (strcmp ((*it)->nai_userid, nai_str) == 0) {
+	    bngc_enbue_app_inst->pdu_connections.erase (it);
+	    break;
+	}
     }
 }
 
