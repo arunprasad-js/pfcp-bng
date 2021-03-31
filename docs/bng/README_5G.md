@@ -47,7 +47,8 @@ docker build . -t bisdn/pfcp-bng-up
 #### Clone this git repository
 
 ```
-git clone https://github.com/dpdk-vbng-cp/pfcp-bng.git
+git clone https://github.com/dpdk-vbng-cp-altran/pfcp-bng.git
+git checkout <branch-name>
 cd pfcp-bng
 ```
 
@@ -132,7 +133,7 @@ To test both BNGU and BNGC applications, we need two hosts. This can be locally 
 | +------------------------+                      |                    |
 | | +------+               |                      |      +------+      |
 | | |      | 192.168.100.1 |      192.168.100.2   |      |      |      |
-| | | BNGC |---------------|----------------------+------| BNGU |      |
+| | | BNGU |---------------|----------------------+------| BNGC |      |
 | | |      | veth0-0       |            veth0-1          |      |      |
 | | +------+               |                             +------+      |
 | |            ns0         |                                 |         |
