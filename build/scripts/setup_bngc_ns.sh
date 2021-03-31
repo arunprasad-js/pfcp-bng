@@ -33,11 +33,11 @@ sudo ip netns add ns0
 echo "Adding veth0-0 to ns0"
 sudo ip link set dev veth0-0 netns ns0
 
-echo "Assigning IP $BNGC_IP to veth0-0"
-sudo ip netns exec ns0 ip a a $BNGC_IP/24 dev veth0-0
+echo "Assigning IP $BNGU_IP to veth0-0"
+sudo ip netns exec ns0 ip a a $BNGU_IP/24 dev veth0-0
 
-echo "Assigning IP $BNGU_IP to veth0-1"
-sudo ip a a $BNGU_IP/24 dev veth0-1
+echo "Assigning IP $BNGC_IP to veth0-1"
+sudo ip a a $BNGC_IP/24 dev veth0-1
 
 echo "Bringing interfaces up"
 sudo ip netns exec ns0 ip link set veth0-0 up
