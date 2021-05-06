@@ -44,6 +44,7 @@ util::thread_sched_params bngc_enbue_sched_params; // BNGC ENBUE App thread para
 util::thread_sched_params bngc_enbue_rx_sched_params; // BNGC ENBUE App thread parameters
 int32_t pollSet;
 std::mutex mtx;
+std::mutex conn_mtx;
 void bngc_enbue_app_task(void*); // Message loop task
 void bngc_enbue_rx_app(void *);
 extern void construct_message (std::string ip_addr, int session_id, std::string ifname,
@@ -60,14 +61,6 @@ int32_t bngc_enbue_timedwait (struct  epoll_event *pFdCtxts)
         if ((nfd = epoll_wait (pollSet, pFdCtxts, 64, 1)) < 0)
 	{
 	    return nfd;
-	}
-
-	for(i = 0; i < nfd; i++)
-	{
-            if ((pFdCtxts + i)->events & EPOLLIN)
-	    {
-		return (pFdCtxts + i)->data.fd;
-	    }
 	}
 
 	return nfd;
@@ -144,11 +137,6 @@ bngc_enbue_process_gtp_msg (uint32_t sock_fd)
 	Logger::bngc_enbue_app().debug ("Message received on Socket: %d, bytes %d",
 		sock_fd, bytesRead);
 
-	printf ("\n");
-	for (int i =0; i<bytesRead; i++)
-		printf ("%02x", buffer[i]);
-	printf ("\n");
-
 	bngc_enbue_app_inst->decode_gtp_packet (buffer);
     }
     else if (bytesRead == 0)
@@ -178,6 +166,7 @@ bngc_enbue_process_response_msg (uint32_t sock_fd)
     std::string             imsi;
     int                     qfi;
     int                     tunnelid;
+    bool                    ip_found = false;
 
     bytesRead = recv (sock_fd, &hdr, sizeof(sim_ext_header_t), MSG_PEEK);
     if (bytesRead > 0) 
@@ -194,7 +183,8 @@ bngc_enbue_process_response_msg (uint32_t sock_fd)
 
 	    if (pFlowResMsg != NULL)
 	    {
-		if (EXT_SUCCESS == pFlowResMsg->result)
+		if ((EXT_SUCCESS == pFlowResMsg->result) && 
+		    (ENBSIM_NO_ERROR == pFlowResMsg->errCode))
 		{
 		    memset(respImsi,0,SIM_MAX_NAI_USERNAME_LEN);
 		    if(pFlowResMsg->supiFormat > 0)
@@ -207,25 +197,24 @@ bngc_enbue_process_response_msg (uint32_t sock_fd)
 		        qfi = pFlowResMsg->qfi;
 			tunnelid = htonl (pFlowResMsg->tunnelId[indx]);
 		        imsi = convert_to_string (respImsi);
-			std::string iftype = bngc_enbue_app_inst->get_ctrl_type_from_nai (respImsi);
-
-			if (strcmp (iftype.c_str(), "pppoe") == 0)
+			for (indx =0 ; indx < 15; indx ++)
 			{
-			    for (indx =0 ; indx < 15; indx ++)
+			    ipAddress.sin_addr.s_addr=htonl(pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr);
+			    if (0 != pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr)
 			    {
-				ipAddress.sin_addr.s_addr=htonl(pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr);
-				if (0 != pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr)
-				{
-				    ipAddress.sin_addr.s_addr=htonl(pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr);
-				    inet_ntop(AF_INET, &(ipAddress.sin_addr), str, INET_ADDRSTRLEN);
-				    ip_addr = convert_to_string (str);
-				    Logger::bngc_enbue_app().debug ("IP Address : %s NAI_String : %s Tunnel ID: 0x%X ",ip_addr.c_str(), imsi.c_str(), pFlowResMsg->tunnelId[indx]);
+			        ipAddress.sin_addr.s_addr=htonl(pFlowResMsg->ueIPAddress[indx].ip_addr_u.ip4_addr.addr);
+			        inet_ntop(AF_INET, &(ipAddress.sin_addr), str, INET_ADDRSTRLEN);
+			        ip_addr = convert_to_string (str);
+			        Logger::bngc_enbue_app().debug ("IP Address : %s NAI_String : %s Tunnel ID: 0x%X ",ip_addr.c_str(), imsi.c_str(), pFlowResMsg->tunnelId[indx]);
 
-				    bngc_enbue_app_inst->update_pdu_info_from_imsi (respImsi, ip_addr, tunnelid, qfi);
-				}
+			        bngc_enbue_app_inst->update_pdu_info_from_imsi (respImsi, ip_addr, tunnelid, qfi);
+			        ip_found = true;
 			    }
 			}
-			else if(strcmp (iftype.c_str(), "ipoe") == 0)
+
+			/* DHCP case */
+			if (ip_found != true)
+
 			{
 			    Logger::bngc_enbue_app().debug ("NAI_String : %s Tunnel ID: 0x%X ", imsi.c_str(), pFlowResMsg->tunnelId[indx]);
 			    bngc_enbue_app_inst->update_pdu_info_from_imsi (respImsi, ip_addr, tunnelid, qfi);
@@ -247,13 +236,15 @@ bngc_enbue_process_response_msg (uint32_t sock_fd)
 			rc = bngc_enbue_app_inst->bngc_enbue_form_detach_request (respImsi);
 			if (rc != RETURNok)
 			{
-			    Logger::bngc_enbue_app().error ("%s: bngc_enbue_form_pdu_request failed", __func__ );
+			    Logger::bngc_enbue_app().error ("%s: bngc_enbue_form_detach_request failed", __func__ );
 			    return rc;
 			}
 		    }
 		}
 		else
 		{
+		    Logger::bngc_enbue_app().error ("%s: failure response received Result: %d ErrCode: %d", __func__,
+				   pFlowResMsg->result, pFlowResMsg->errCode); 
 		    return RETURNerror; 
 		}
 	    }
@@ -352,10 +343,6 @@ int bngc_enbue_app::dp_inst_conf ()
     dpInstanceConfVar.dstIpAddress.ip_addr_type = LTE_IP_ADDRESS_IPV4;
 
     dpInstanceConfVar.dpGtpIpAddress.ip_addr_u.ip4_addr.addr = inet_addr (bngc_enbue_config[BNGC_ENBUE_IP_ADDR_OPTION].GetString());
-#if 0
-    strcpy(dpInstanceConfVar.phy_inface, gbConfig.scenario[current_scenario].scenarioInputs.phy_inface);
-    dpInstanceConfVar.vlan_id = ; 
-#endif
     dpInstanceConfVar.dpTeIpAddress.ip_addr_type = LTE_IP_ADDRESS_IPV4;
     dpInstanceConfVar.dpTeIpAddress.ip_addr_u.ip4_addr.addr = inet_addr (bngc_enbue_config[BNGC_ENBUE_IP_ADDR_OPTION].GetString()); 
 
@@ -567,165 +554,215 @@ OpenConnection (const char *address, int port)
 
 bool bngc_enbue_app::find_conn_from_session (int session_id)
 {
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
 	if ((it->session_id == session_id) && 
             (strcmp (it->iftype.c_str(), "pppoe") == 0))
 	{
+            conn_mtx.unlock();
 	    return true; 
 	}
     }
+    conn_mtx.unlock();
     return false;
 }
 
 bool bngc_enbue_app::find_conn_from_xid (int session_id)
 {
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
 	if ((it->xid == session_id) && 
             (strcmp (it->iftype.c_str(), "ipoe") == 0))
 	{
+            conn_mtx.unlock();
 	    return true; 
 	}
     }
+    conn_mtx.unlock();
     return false;
 }
 
 bool bngc_enbue_app::find_conn_from_session_id (std::string session)
 {
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
 	if ((it->session == session) && 
 	    (strcmp (it->iftype.c_str(), "ipoe") == 0))
 	{
+            conn_mtx.unlock();
 	    return true; 
 	}
     }
+    conn_mtx.unlock();
+    return false;
+}
+
+bool bngc_enbue_app::is_nai_present (char *nai)
+{
+    conn_mtx.lock();
+    for (auto it : pdu_connections) {
+	if (strcmp(it->nai_userid, nai) == 0)
+	{
+            conn_mtx.unlock();
+	    return true; 
+	}
+    }
+    conn_mtx.unlock();
     return false;
 }
 
 std::shared_ptr<bngc_enbue::pdu_establish_connection> bngc_enbue_app::find_conn_from_nai (char *nai)
 {
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
 	if (strcmp(it->nai_userid, nai) == 0)
 	{
+            conn_mtx.unlock();
 	    return it; 
 	}
     }
+    conn_mtx.unlock();
     return NULL;
 }
 
 void bngc_enbue_app::update_pdu_info_from_imsi (char *nai_str, std::string ip_addr, int ngc_tunnel, int qfi)
 {
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
 	if(strcmp (it->nai_userid, nai_str) == 0) {
 		it->ip_addr = ip_addr;
 		it->ngc_tunnel = ngc_tunnel;
 		it->qfi = qfi;
-	        if (strcmp (it->iftype.c_str(), "ipoe") == 0)
-			construct_message (ip_addr, it->session_id, it->ifname, it->iftype, it->session);
-		else
-			construct_message (ip_addr, it->session_id, it->ifname, it->iftype, it->session);
-
+		construct_message (ip_addr, it->session_id, it->ifname, it->iftype, it->session);
+		break;
 	}
     }
+    conn_mtx.unlock();
 }
 
 int bngc_enbue_app::get_tunnel_id_from_nai (char *nai_str)
 {
+    int tunnel_id = 0;
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
 	if(strcmp (it->nai_userid, nai_str) == 0) {
-	        return it->ngc_tunnel;
+		tunnel_id = it->ngc_tunnel;
+                conn_mtx.unlock();
+	        return tunnel_id; 
 	}
     }
+    conn_mtx.unlock();
     return 0;
 }
+
 int bngc_enbue_app::get_qfi_from_nai (char *nai_str)
 {
+    int qfi = 0;
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
        if(strcmp (it->nai_userid, nai_str) == 0) {
-               return it->qfi;
+	       qfi = it->qfi;
+               conn_mtx.unlock();
+               return qfi;
        }
     }
+    conn_mtx.unlock();
     return 0;
 }
 
 std::string bngc_enbue_app::get_ctrl_type_from_nai (char *nai_str)
 {
+    std::string iftype;
+    conn_mtx.lock();
     for (auto it : pdu_connections) {
 	if(strcmp (it->nai_userid, nai_str) == 0) {
-	        return it->iftype;
+		iftype = it->iftype;
+                conn_mtx.unlock();
+	        return iftype;
 	}
     }
+    conn_mtx.unlock();
     return "";
 }
 
 int bngc_enbue_app::get_tunnel_id (int session_id)
 {
-	for (auto it : pdu_connections) {
-		if ((it->iftype == "pppoe") &&
-				(it->session_id == session_id))
-			return it->ngc_tunnel;
+    int tunnel_id = 0;
+    conn_mtx.lock();
+    for (auto it : pdu_connections) {
+	if ((it->iftype == "pppoe") &&
+            (it->session_id == session_id)) {
+	    tunnel_id = it->ngc_tunnel;
+	    conn_mtx.unlock();
+	    return tunnel_id; 
 	}
-
-	return 0;
+    }
+    conn_mtx.unlock();
+    return 0;
 }
 
 int bngc_enbue_app::get_tunnel_id (std::string session_id)
 {
-	for (auto it : pdu_connections) {
-		if ((it->iftype == "ipoe") &&
-				(it->session == session_id))
-			return it->ngc_tunnel;
+    int tunnel_id = 0;
+    conn_mtx.lock();
+    for (auto it : pdu_connections) {
+	if ((it->iftype == "ipoe") &&
+            (it->session == session_id)) {
+	    tunnel_id = it->ngc_tunnel;
+            conn_mtx.unlock();
+	    return tunnel_id;
 	}
+    }
+    conn_mtx.unlock();
 
-	return 0;
+    return 0;
 }
 
 int bngc_enbue_app::get_qfi_id (int session_id)
 {
-	for (auto it : pdu_connections) {
-		if ((it->iftype == "pppoe") &&
-				(it->session_id == session_id))
-			return it->qfi;
+    int qfi = 0;
+    conn_mtx.lock();
+    for (auto it : pdu_connections) {
+	if ((it->iftype == "pppoe") &&
+            (it->session_id == session_id)) {
+	    qfi = it->qfi;
+	    conn_mtx.unlock();
+	    return qfi;
 	}
+    }
 
-	return 0;
+    conn_mtx.unlock();
+    return 0;
 }
+
 int bngc_enbue_app::get_qfi_id (std::string session_id)
 {
-	for (auto it : pdu_connections) {
-		if ((it->iftype == "ipoe") &&
-				(it->session == session_id))
-			return it->qfi;
+    int qfi = 0;
+    conn_mtx.lock();
+    for (auto it : pdu_connections) {
+	if ((it->iftype == "ipoe") &&
+	    (it->session == session_id)) {
+	    qfi = it->qfi;
+	    conn_mtx.unlock();
+	    return qfi; 
 	}
+    }
 
-	return 0;
+    conn_mtx.unlock();
+    return 0;
 }
 
 void bngc_enbue_app::delete_pdu_info (char *nai_str)
 {
-#if 0
-    std::vector<std::shared_ptr<pdu_establish_connection>>::iterator iter; 
-    
-    iter = pdu_connections.begin();
-
-    for (auto it : pdu_connections) {
-
-	    if (iter == pdu_connections.end())
-	        break;
-
-	if(strcmp (it->nai_userid, nai_str) == 0) {
-	    bngc_enbue_app_inst->pdu_connections.erase (iter);
-	}
-	iter ++;
-    }
-#endif
-
+    conn_mtx.lock();
     for (std::vector<std::shared_ptr<pdu_establish_connection>>::iterator it = pdu_connections.begin();
-           it < pdu_connections.end(); ++it) {
-       if (strcmp ((*it)->nai_userid, nai_str) == 0) {
-           bngc_enbue_app_inst->pdu_connections.erase (it);
-           break;
-       }
+	    it < pdu_connections.end(); ++it) {
+	if (strcmp ((*it)->nai_userid, nai_str) == 0) {
+		bngc_enbue_app_inst->pdu_connections.erase (it);
+		break;
+	}
     }
+    conn_mtx.unlock();
 }
 
 void bngc_enbue_app::print_list ()
@@ -906,7 +943,7 @@ int bngc_enbue_app::ecgi_add_conf ()
 	ecgiConfVar.ecgi.plmn_id.num_mnc_digits = 3;
     }
 
-    strcpy((char *)ecgiConfVar.ecgi.eci.bytes, bngc_enbue_config[BNGC_ENBUE_ECGI_ECI_ID_OPTION].GetString());
+    strncpy((char *)ecgiConfVar.ecgi.eci.bytes, bngc_enbue_config[BNGC_ENBUE_ECGI_ECI_ID_OPTION].GetString(), 4);
     ecgiConfVar.taiIndex = bngc_enbue_config[BNGC_ENBUE_ECGI_TAI_OPTION].GetInt();
     strcpy((char *)ecgiConfVar.ecgi.plmn_id.octets, bngc_enbue_config[BNGC_ENBUE_ECGI_PLMN_ID_OPTION].GetString());
     ecgiConfVar.taiIndex = bngc_enbue_config[BNGC_ENBUE_TAI_INDEX_OPTION].GetInt();

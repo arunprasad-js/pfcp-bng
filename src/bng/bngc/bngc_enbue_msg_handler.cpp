@@ -37,6 +37,7 @@ using namespace rapidjson;
 extern bngc_enbue_app *bngc_enbue_app_inst;
 extern itti_mw *itti_inst;
 extern Document bngc_config;
+extern std::mutex conn_mtx;
 
 int bngc_enbue::translate_ppp_to_5g_session_establishment(Document &d,
     itti_enbue_register_request *itti_reg_req)
@@ -60,9 +61,7 @@ int bngc_enbue::translate_ppp_to_5g_session_establishment(Document &d,
 
     strcpy ((itti_reg_req->nai_userid), nai_userid);
 
-    std::shared_ptr<bngc_enbue::pdu_establish_connection> ptr;
-
-    if ((ptr = bngc_enbue_app_inst->find_conn_from_nai (nai_userid)) != NULL)
+    if ((bngc_enbue_app_inst->is_nai_present (nai_userid)) != false)
     {
         Logger::bngc_enbue_app().debug("Session Id present in conn table ");
         return RETURNerror;
@@ -73,23 +72,12 @@ int bngc_enbue::translate_ppp_to_5g_session_establishment(Document &d,
     if (strcmp (iftype.c_str(), "pppoe") == 0)
     {
         int pppoe_session_id_int = d[PPPD_PPPOE_SESSIONID].GetInt();
-	if (bngc_enbue_app_inst->find_conn_from_session (pppoe_session_id_int) == true)
-	{
-	    Logger::bngc_enbue_app().debug("Session Id present in conn table ");
-	    return RETURNerror;
-	}
         p->session_id = pppoe_session_id_int;
     }
     else if (strcmp (iftype.c_str(), "ipoe") == 0)
     {
 	int xid = d[PPPD_DHCP_SESSIONID].GetInt();
         std::string session = d[PPPD_SESSIONID].GetString();
-
-	if (bngc_enbue_app_inst->find_conn_from_session_id (session) == true)
-	{
-	    Logger::bngc_enbue_app().debug("Session Id present in conn table ");
-	    return RETURNerror;
-	}
 	p->session = session;
 	p->xid = xid; 
     }
@@ -103,8 +91,12 @@ int bngc_enbue::translate_ppp_to_5g_session_establishment(Document &d,
 
     Logger::bngc_enbue_app().debug("NAI User Id : %s",p->nai_userid);
 
+    conn_mtx.lock();
+
     std::shared_ptr<pdu_establish_connection> sp = std::shared_ptr<pdu_establish_connection>(p);
     bngc_enbue_app_inst->pdu_connections.push_back(sp);
+
+    conn_mtx.unlock();
 
     return RETURNok;
 }

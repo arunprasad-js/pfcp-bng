@@ -565,6 +565,7 @@ public:
     int tcp_parse(const unsigned char *s, t_tcpinfo *Z);
     int udp_parse(const unsigned char *s, t_udpinfo *Z);
     int sctp_parse(const unsigned char *s, t_sctpinfo *Z);
+    bool is_nai_present (char *nai);
 };
 
 }
