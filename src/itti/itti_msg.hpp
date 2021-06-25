@@ -63,6 +63,7 @@ typedef enum {
   TASK_REDIS_CLIENT, // Redis client module
   TASK_BNGC_ENBUE_APP, // BNG CP Enbue App
   TASK_BNGC_ENBUE_RX_APP, // BNG CP Enbue App
+  TASK_BNGC_ENBUE_RX_DHCP_APP, // BNG CP Enbue App
   TASK_MAX,
   TASK_NONE,
   TASK_ALL = 255

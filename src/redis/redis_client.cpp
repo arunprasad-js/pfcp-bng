@@ -41,6 +41,11 @@ extern itti_mw *itti_inst;
 extern redis_client *redis_client_inst;
 Redis *redis = nullptr;
 
+int gu4DiscoverEnc = 0;
+int gu4OfferEnc = 0;
+int gu4RequestEnc = 0;
+int gu4AckEnc = 0;
+
 // ITTI thread task
 void redis_itti_task(void *);
 
@@ -171,6 +176,14 @@ void construct_message (std::string ip_addr, int session_id, std::string ifname,
     return;
 }
 
+void print_enc_info()
+{
+    printf("gu4DiscoverEnc : %d \n",gu4DiscoverEnc);
+    printf("gu4OfferEnc    : %d \n",gu4OfferEnc); 
+    printf("gu4RequestEnc  : %d \n",gu4RequestEnc);
+    printf("gu4AckEnc      : %d \n",gu4AckEnc);
+}
+
 void construct_redis_packet (uint8_t *message, int len)
 {
     std::string msg;
@@ -185,7 +198,20 @@ void construct_redis_packet (uint8_t *message, int len)
     rapidjson::Document::AllocatorType& allocator = d.GetAllocator();
 
     for (int i = 0; i <= len; i++)
+    {
        array.PushBack(*(message+i), allocator); 
+    }
+
+#if 0
+    if (*(message+242) == 2)
+	    gu4OfferEnc++;
+    else if (*(message+242) == 1)
+	    gu4DiscoverEnc++;
+    else if (*(message+242) == 3)
+	    gu4RequestEnc++;
+    else if (*(message+242) == 5)
+	    gu4AckEnc++;
+#endif
 
     rapidjson::Value iftype_value(iftype.c_str(), iftype.size(), d.GetAllocator());
     d.AddMember("ctrl_iftype", iftype_value, allocator);
